@@ -1,4 +1,4 @@
-#! /usr/bin/perl -w
+#!/usr/bin/perl -w
 
 use Time::HiRes qw(usleep gettimeofday tv_interval);
 use Config::Simple;
@@ -19,22 +19,10 @@ my $intensity = 0.0;
 my $intensity_artnet = 0.0;
 my $cross_fade_intensity = 0.0;
 my $cross_fade_state = 'fade_in';
-my $fps ;
+my $fps = 0;
 
 my $cross_fade_time = $config->param('cross_fade_time') || 2;
 my $cross_fade_per_step;
-
-#sub print_status {
-#	while (1) {
-#		print("intensity: $intensity\n");
-#		print("intensity_artnet: $intensity_artnet\n");
-#		print("cross_fade_intensity: $cross_fade_intensity\n");
-#		print("cross_fade_state: $cross_fade_state\n");
-#		print("fps: $fps\n\n");
-#		usleep(1000_000);
-#	}
-#}
-#my $thread = threads->create(\&print_status);
 
 my $share_intensity = IPC::ShareLite->new(
 	-key		=> 6454,
@@ -68,13 +56,18 @@ $SIG{USR2} = sub {
 	$cross_fade_state = 'fade_out';
 	
 	print "fading to new data\n";
-	open(FH, '<', $artnet_data_file) or warn $!;
-	$new_artnet_data = do { local $/; <FH> };	# read all data into memory
-	$new_artnet_data =~ s/^(.*)//;
-	$fps = $1;
+	open(my $fh, '<', $artnet_data_file) or warn $!;
+	$new_artnet_data = do { local $/; <$fh> };
+	$new_artnet_data =~ s/^([^\n]+)\n?//;
+	my $raw_fps = $1;
+	
+	if (defined $raw_fps && $raw_fps =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) {
+		$fps = ($raw_fps =~ /^(\d+)\/(\d+)$/) ? ($1 / $2) : $raw_fps;
+	}
+	$fps ||= 30; # Safety default
 	print "frame rate: $fps\n";
 	$cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
-	close FH;
+	close $fh;
 };
 
 my $should_exit = 0;
@@ -84,28 +77,32 @@ $SIG{KILL} = sub { print "$0 received SIGKILL\n"; $cross_fade_state = 'fade_out'
 my @pixel_line;
 my ($red, $green, $blue);
 
-# Wait until the data file exists and is not empty
+# Wait until the data file exists and has content
 print "Waiting for artnet data file: $artnet_data_file\n";
-while (!-s $artnet_data_file) {
+while (!-e $artnet_data_file || -z $artnet_data_file) {
 	sleep 1;
 }
-open(FH, '<', $artnet_data_file) or warn $!;
-$artnet_data = do { local $/; <FH> };	# read all data into memory
-$artnet_data =~ s/^(.*)//;
 
-$fps = $1;
-# Force numeric conversion
+open(my $fh, '<', $artnet_data_file) or warn $!;
+$artnet_data = do { local $/; <$fh> };
+$artnet_data =~ s/^([^\n]+)\n?//;
+my $raw_fps = $1 || 30;
+close $fh;
+
+# Force numeric conversion and prevent division by zero
 if ($raw_fps =~ /^(\d+)\/(\d+)$/) {
 	$fps = $1 / $2;
 } else {
 	$fps = $raw_fps;
 }
-print "frame rate: $fps\n";
+$fps = 30 if $fps <= 0;
 
+print "frame rate: $fps\n";
 $cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
-close FH;
+
 while (1) {
 	foreach (split("\n", $artnet_data)) {
+		next if length($_) < 2;
 		@pixel_line = (/.{2}/g);
 		if ($cross_fade_state eq 'fade_out' && $cross_fade_intensity > 0.0) {
 			$cross_fade_intensity -= $cross_fade_per_step;
@@ -120,7 +117,7 @@ while (1) {
 			else {
 				# switch to new data
 				$artnet_data = $new_artnet_data;
-				
+
 				$cross_fade_state = 'fade_in';
 				last;
 			}
@@ -133,6 +130,7 @@ while (1) {
 			$cross_fade_intensity = 1.0;
 			$cross_fade_state = 'on';
 		}
+		
 		# respect the limits
 		if ($cross_fade_intensity < 0.0) {
 			$cross_fade_intensity = 0.0;
@@ -140,6 +138,7 @@ while (1) {
 		if ($cross_fade_intensity > 1.0) {
 			$cross_fade_intensity = 1.0;
 		}
+		
 		my $i = 0;
 		while (($red, $green, $blue) = splice(@pixel_line, 0, 3)) {
 			$artnet->set_pixel(
@@ -154,10 +153,4 @@ while (1) {
 	}
 }
 
-END {
-
-}
-
 1;
-
-__END__
