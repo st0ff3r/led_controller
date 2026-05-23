@@ -31,7 +31,8 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 					<div class="row">
 						<div class="col-md-3">&nbsp;</div>
 						<div class="col-md-6">
-							<div id="drag_drop">Drag & Drop movie file here
+							<div id="drag_drop">Click or Drag & Drop movie file here
+								<input type="file" id="file_input" style="display:none;" accept="video/*">
 								<div class="progress" id="progress_bar" style="display:none; height:50px;">
 									<div class="progress-bar bg-success" id="progress_bar_process" role="progressbar" style="width:0%; height:50px;">0%</div>
 								</div>
@@ -52,36 +53,46 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 <style>
 .card { position: relative; display: flex; flex-direction: column; min-width: 0; word-wrap: break-word; background-color: #fff; background-clip: border-box; border: 1px solid rgba(0,0,0,0); border-radius: .25rem }
 .card-header { padding: .5rem 1rem; margin-bottom: 0; background-color: rgba(0,0,0,0); border-bottom: 1px solid rgba(0,0,0,0) }
-#drag_drop { background-color: #f9f9f9; border: #ccc 4px dashed; line-height: 250px; padding: 12px; font-size: 24px; text-align: center; }
+#drag_drop { background-color: #f9f9f9; border: #ccc 4px dashed; line-height: 250px; padding: 12px; font-size: 24px; text-align: center; cursor: pointer; }
 </style>
 
 <script>
 function _(element) { return document.getElementById(element); }
 
+// UI Event Handlers
 _('drag_drop').ondragover = function(event) { this.style.borderColor = '#333'; return false; }
 _('drag_drop').ondragleave = function(event) { this.style.borderColor = '#ccc'; return false; }
 
+// Trigger hidden file input on click
+_('drag_drop').onclick = function() {
+    _('file_input').click();
+};
+
+_('file_input').onchange = function(event) {
+    handleFileUpload(event.target.files);
+};
+
 _('drag_drop').ondrop = function(event) {
 	event.preventDefault();
-	var form_data  = new FormData();
-	var drop_files = event.dataTransfer.files;
-	
-	if (drop_files.length > 1) {
+	handleFileUpload(event.dataTransfer.files);
+}
+
+// Unified Upload Logic
+function handleFileUpload(files) {
+	if (files.length > 1) {
 		alert("Only supports upload of one file");
 		return;
 	}
-	form_data.append("movie_file", drop_files[0]);
+	var form_data = new FormData();
+	form_data.append("movie_file", files[0]);
 
 	_('progress_bar').style.display = 'block';
 
-	// 1. Start EventSource to monitor progress
 	var source = new EventSource('progress');
 	source.addEventListener('message', function(event) {
 		if (event.data == "DONE") {
 			source.close();
 			_('progress_bar').style.display = 'none';
-			
-			// Start polling to ensure the image is fully ready and readable
 			pollForImage();
 		} else {
 			var percent = Math.round(event.data);
@@ -90,13 +101,12 @@ _('drag_drop').ondrop = function(event) {
 		}
 	});
 
-	// 2. Perform the upload
 	var ajax_request = new XMLHttpRequest();
 	ajax_request.open("post", "upload");
 	ajax_request.addEventListener('load', function(event) {
 		if (ajax_request.status >= 400) {
 			source.close();
-			_('uploaded_image').innerHTML = '<div class="alert alert-danger"><b>Already running or error</div>';
+			_('uploaded_image').innerHTML = '<div class="alert alert-danger"><b>Already running or error</b></div>';
 			setTimeout(function() { _('uploaded_image').innerHTML = ''; }, 3000);
 		}
 	});
@@ -109,13 +119,11 @@ function pollForImage() {
 	var newUrl = 'images/slitscan.png?' + Date.now();
 	
 	img.onload = function() {
-		// Image loaded successfully and is not 0 bytes
 		_('slitscan').src = newUrl;
 		console.log("Slitscan loaded successfully.");
 	};
 	
 	img.onerror = function() {
-		// Image not ready or corrupted (0 bytes), retry in 1 second
 		console.log("Slitscan not ready, retrying...");
 		setTimeout(pollForImage, 1000);
 	};
