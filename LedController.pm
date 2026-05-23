@@ -37,6 +37,7 @@ sub update_progress {
 	my ($self, $val) = @_;
 	my $formatted = sprintf("%.1f", $val);
 	$self->{redis}->set('progress', $formatted);
+
 	# Log progress to Docker output
 	warn "[LedController] Progress updated to $formatted%\n";
 }
@@ -95,6 +96,8 @@ sub movie_to_artnet {
 	closedir DIR;
 	warn "[LedController] Extracted " . scalar(@images) . " frames\n";
 
+	$self->update_progress(75.0);
+	
 	my $slitscan_image_height = scalar(@images) > SLITSCAN_IMAGE_MAX_HEIGHT ? SLITSCAN_IMAGE_MAX_HEIGHT : scalar(@images);
 	$self->{slitscan_image}->Set(size=>$config->param('num_pixels') . 'x' . $slitscan_image_height);
 	$self->{slitscan_image}->ReadImage('canvas:white');
@@ -102,9 +105,13 @@ sub movie_to_artnet {
 	my ($fh_out, $temp_artnet_data_file) = tempfile( CLEANUP => 0 );
 	print $fh_out "$fps\n";
 	
-	my $i = 0;
-	my $progress_inc = 25.0 / (scalar(@images) + ($loop_forth_and_back ? scalar(@images) - 2 : 0));
+	my $total_frames = scalar(@images);
+	my $total_steps = $total_frames + ($loop_forth_and_back ? $total_frames - 2 : 0);
+	my $update_threshold = int($total_steps / 50) || 1;
+	my $step_counter = 0;
+	my $progress_inc = $total_steps > 0 ? (25.0 / $total_steps) : 0;
 	
+	my $i = 0;
 	# Process frames to ArtNet
 	foreach (@images) {
 		my $p = new Image::Magick;
@@ -116,7 +123,11 @@ sub movie_to_artnet {
 			$self->{slitscan_image}->SetPixel(x => $x, y => $i, color => [$red, $green, $blue]) if $i < $slitscan_image_height;
 		}
 		print $fh_out "\n";
-		$self->update_progress($self->{redis}->get('progress') + $progress_inc);
+		
+		if ($step_counter % $update_threshold == 0) {
+			$self->update_progress(75.0 + ($step_counter * $progress_inc));
+		}
+		$step_counter++;
 		$i++;
 	}
 	
@@ -130,7 +141,11 @@ sub movie_to_artnet {
 				print $fh_out sprintf("%02x%02x%02x", int($red * 255), int($green * 255), int($blue * 255));
 			}
 			print $fh_out "\n";
-			$self->update_progress($self->{redis}->get('progress') + $progress_inc);
+			
+			if ($step_counter % $update_threshold == 0) {
+				$self->update_progress(75.0 + ($step_counter * $progress_inc));
+			}
+			$step_counter++;
 		}
 	}
 	close($fh_out);
