@@ -4,7 +4,6 @@ services:
     container_name: led_controller
     image: led_controller:latest
     restart: unless-stopped
-    network_mode: "host"
     ports:
       - "80:80"
       - "6454:6454/udp"
