@@ -79,4 +79,8 @@ COPY ./index.epl /var/www/led_controller/
 COPY ./bootstrap.min.css /var/www/led_controller/
 COPY ./bootstrap.min.css.map /var/www/led_controller/
 
+ENV PERL5LIB=/led_controller
+
+WORKDIR /led_controller
+
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
