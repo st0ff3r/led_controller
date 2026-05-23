@@ -3,7 +3,7 @@ use strict;
 use Redis;
 use LedController;
 
-my $redis = Redis->new(server => '127.0.0.1:6379');
+my $redis = Redis->new(server => 'redis:6379');
 my $c = LedController->new();
 
 while (1) {

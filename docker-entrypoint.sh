@@ -1,44 +1,42 @@
 #!/bin/bash
+# Enable job control
+set -m
 
-# Ensure PERL5LIB is exported for any sub-processes
+# Ensure PERL5LIB is exported for this script and its future children
 export PERL5LIB=/led_controller
 
-service apache2 start
-service redis-server start
+# Start services
+apachectl start
 
 chown -R www-data:www-data /led_controller/data
 cd /led_controller
 
+# Function to handle clean shutdown
 terminate() {
 	echo "sending SIGTERM to child processes"
-	
-	# Attempt to kill children
-	[ ! -z "$sudo_send_artnet_data_pid" ] && pkill -P "$sudo_send_artnet_data_pid"
-	[ ! -z "$sudo_artnetd_pid" ] && pkill -P "$sudo_artnetd_pid"
-	
-	sleep 5
-		
-	# Kill workers
-	kill $movie_to_artnet_data_worker_pid 2> /dev/null
+	pkill -P $$
+	exit
 }
-
 trap terminate SIGTERM
 
-# Start processes as www-data with explicit PERL5LIB injection
-./sun_tracker.pl &
+# Start scripts
+# PERL5LIB is explicitly set before each command to ensure visibility 
+# Output is redirected to /proc/1/fd/1 (stdout) and /proc/1/fd/2 (stderr)
+
+PERL5LIB=/led_controller ./sun_tracker.pl > /proc/1/fd/1 2>&1 &
 sleep 5
 
-sudo -u www-data PERL5LIB=/led_controller ./movie_to_artnet_data_worker.pl &
+sudo -u www-data PERL5LIB=/led_controller ./movie_to_artnet_data_worker.pl > /proc/1/fd/1 2>&1 &
 movie_to_artnet_data_worker_pid=$!
 
-sudo -u www-data PERL5LIB=/led_controller ./send_artnet_data.pl &
+sudo -u www-data PERL5LIB=/led_controller ./send_artnet_data.pl > /proc/1/fd/1 2>&1 &
 sudo_send_artnet_data_pid=$!
 
-sudo -u www-data PERL5LIB=/led_controller ./artnetd.pl &
+sudo -u www-data PERL5LIB=/led_controller ./artnetd.pl > /proc/1/fd/1 2>&1 &
 sudo_artnetd_pid=$!
 
 sleep 5
-./artnet_listener.pl &
+PERL5LIB=/led_controller ./artnet_listener.pl > /proc/1/fd/1 2>&1 &
 
-wait "$sudo_send_artnet_data_pid"
-wait "$sudo_artnetd_pid"
+# Keep the entrypoint running by waiting for background processes
+wait

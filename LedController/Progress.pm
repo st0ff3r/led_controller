@@ -7,7 +7,7 @@ use Redis;
 
 sub handler {
 	my $r = shift;
-	my $redis = Redis->new(server => '127.0.0.1:6379');
+	my $redis = Redis->new(server => 'redis:6379');
 	
 	$r->content_type('text/event-stream');
 	$r->headers_out->set('Cache-Control' => 'no-cache');

@@ -8,7 +8,7 @@ use CGI;
 
 sub handler {
 	my $r = shift;
-	my $redis = Redis->new(server => '127.0.0.1:6379');
+	my $redis = Redis->new(server => 'redis:6379');
 
 	# Check if system is already busy
 	if ($redis->exists('system_locked')) {

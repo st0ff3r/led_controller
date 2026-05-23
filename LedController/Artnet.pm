@@ -8,7 +8,7 @@ use Storable qw(freeze thaw);
 use Data::Dumper;
 use Data::HexDump;
 
-use constant REDIS_HOST => '127.0.0.1';
+use constant REDIS_HOST => 'redis';
 use constant REDIS_PORT => '6379';
 use constant REDIS_QUEUE_1_NAME => 'artnet_1';
 use constant REDIS_QUEUE_2_NAME => 'artnet_2';

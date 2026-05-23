@@ -1,16 +1,20 @@
 #!/usr/bin/perl -w
 
+use strict;
 use Time::HiRes qw(usleep gettimeofday tv_interval);
 use Config::Simple;
 use IPC::ShareLite;
 use Data::Dumper;
+use Redis;
 
-use lib qw ( ./ );
 use LedController::Artnet;
 
 use constant ARTNET_CONF => '/led_controller/artnet.conf';
 
+$| = 1; # Force autoflush
+
 my $config = new Config::Simple(ARTNET_CONF);
+my $redis = Redis->new(server => 'redis:6379');
 my $artnet_data_file = $ARGV[0] || "data/artnet.data";
 my $artnet_data = '';
 my $new_artnet_data = '';
@@ -52,25 +56,6 @@ $SIG{USR1} = sub {
 	$intensity_artnet = $share_intensity_artnet->fetch;
 };
 
-$SIG{USR2} = sub {
-	$cross_fade_state = 'fade_out';
-	
-	print "fading to new data\n";
-	open(my $fh, '<', $artnet_data_file) or warn $!;
-	$new_artnet_data = do { local $/; <$fh> };
-	$new_artnet_data =~ s/^([^\n]+)\n?//;
-	my $raw_fps = $1;
-	
-	if (defined $raw_fps && $raw_fps =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) {
-		$fps = ($raw_fps =~ /^(\d+)\/(\d+)$/) ? ($1 / $2) : $raw_fps;
-	}
-	$fps ||= 30; # Safety default
-	print "frame rate: $fps\n";
-	$cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
-	warn "[DEBUG] cross_fade_per_step updated to $cross_fade_per_step\n";
-	close $fh;
-};
-
 my $should_exit = 0;
 $SIG{TERM} = sub { print "$0 received SIGTERM\n"; $cross_fade_state = 'fade_out'; $should_exit = 1 };
 $SIG{KILL} = sub { print "$0 received SIGKILL\n"; $cross_fade_state = 'fade_out'; $should_exit = 1 };
@@ -102,6 +87,27 @@ print "frame rate: $fps\n";
 $cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
 
 while (1) {
+	# Check for Redis trigger to load new data
+	if ($redis->get('trigger_new_data') eq '1') {
+		$redis->set('trigger_new_data', '0');
+		$cross_fade_state = 'fade_out';
+		
+		print "fading to new data\n";
+		open(my $fh, '<', $artnet_data_file) or warn $!;
+		$new_artnet_data = do { local $/; <$fh> };
+		$new_artnet_data =~ s/^([^\n]+)\n?//;
+		my $raw_fps = $1;
+		
+		if (defined $raw_fps && $raw_fps =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) {
+			$fps = ($raw_fps =~ /^(\d+)\/(\d+)$/) ? ($1 / $2) : $raw_fps;
+		}
+		$fps ||= 30; # Safety default
+		print "frame rate: $fps\n";
+		$cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
+		warn "[DEBUG] cross_fade_per_step updated to $cross_fade_per_step\n";
+		close $fh;
+	}
+
 	foreach (split("\n", $artnet_data)) {
 		next if length($_) < 2;
 		@pixel_line = (/.{2}/g);

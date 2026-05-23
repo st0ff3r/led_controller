@@ -13,8 +13,10 @@ use Data::Dumper;
 
 use constant ARTNET_CONF => '/led_controller/artnet.conf';
 use constant SLITSCAN_IMAGE_MAX_HEIGHT => 10000;
-use constant REDIS_HOST => '127.0.0.1';
+use constant REDIS_HOST => 'redis';
 use constant REDIS_PORT => '6379';
+
+$| = 1; # Force autoflush
 
 my $config = new Config::Simple(ARTNET_CONF);
 
@@ -160,8 +162,8 @@ sub movie_to_artnet {
 	move($temp_artnet_data_file, $artnet_data_file) || die $!;
 	remove_tree($temp_dir);
 	
-	warn "[LedController] Triggering USR2 signal for send_artnet_data\n";
-	killall('USR2', 'send_artnet_data');
+	warn "[LedController] Triggering Redis update for send_artnet_data\n";
+	$self->{redis}->set('trigger_new_data', '1');
 	return 1;
 }
 

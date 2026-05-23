@@ -1,6 +1,6 @@
 FROM debian:bookworm
 
-MAINTAINER Kristoffer Ek <stoffer@skulp.net>
+LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
 
 # Enable non-free for Debian Bookworm
 RUN echo "deb http://deb.debian.org/debian bookworm non-free non-free-firmware" >> /etc/apt/sources.list
@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
 	sudo \
 	screen \
 	rsync \
-	redis-server \
+	redis-tools \
 	apache2 \
 	apache2-bin \
 	apache2-doc \
