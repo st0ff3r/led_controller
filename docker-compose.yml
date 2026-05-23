@@ -1,0 +1,13 @@
+services:
+  led_controller:
+    build: .
+    container_name: led_controller
+    image: led_controller:latest
+    restart: unless-stopped
+    network_mode: "host"
+    ports:
+      - "80:80"
+      - "6454:6454/udp"
+    volumes:
+      - ./persistent_data/artnet:/led_controller/data
+      - ./persistent_data/images:/var/www/led_controller/images
