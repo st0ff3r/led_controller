@@ -33,7 +33,6 @@ sub new {
 	return($self);
 }
 
-# Helper to ensure progress is always a formatted number
 sub update_progress {
 	my ($self, $val) = @_;
 	$self->{redis}->set('progress', sprintf("%.1f", $val));
@@ -48,6 +47,7 @@ sub movie_to_artnet {
 	my $loop_forth_and_back = $p{loop_forth_and_back} || undef;
 
 	$self->update_progress(50.0);
+	
 	my $fps_str;
 	if (open(my $fh, "-|", "ffprobe", "-v", "error", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", $movie_file)) {
 		$fps_str = <$fh>;
@@ -56,22 +56,27 @@ sub movie_to_artnet {
 
 	my $fps;
 	if (defined $fps_str && $fps_str =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) { $fps = $1; }
+	if (!$fps) { $self->{redis}->set('progress', '-1'); return 0; }
 	
-	if (!$fps) {
-		$self->{redis}->set('progress', '-1');
-		return 0;	
-	}
+	# Get duration using ffprobe for stability
+	my $movie_duration = 0;
+	my $duration_str = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $movie_file`;
+	chomp($duration_str);
+	$movie_duration = $duration_str if $duration_str =~ /^\d+(\.\d+)?$/;
 	
 	$temp_dir = tempdir( CLEANUP => 0 );
-	my ($movie_duration, $movie_converted);
 
 	my $ffmpeg_vf = "scale=" . $config->param('num_pixels') . ":-2:flags=neighbor,crop=" . $config->param('num_pixels') . ":1:0:";
-	open(FFMPEG, "-|", "ffmpeg", "-i", $movie_file, "-progress", "-", "-vf", $ffmpeg_vf, "-r", $fps, $temp_dir . "/%08d.png");
+	
+	# Execute ffmpeg with stderr redirected to stdout to capture progress
+	open(FFMPEG, "-|", "ffmpeg", "-i", $movie_file, "-progress", "-", "-vf", $ffmpeg_vf, "-r", $fps, "$temp_dir/%08d.png");
 	while (<FFMPEG>) {
-		if (/Duration: (\d{2}):(\d{2}):(\d{2})(\.\d+),/) { $movie_duration = $1 * 3600 + $2 * 60 + $3 + $4; }
 		if (/out_time=(\d{2}):(\d{2}):(\d{2})(\.\d+)/) {
-			$movie_converted = $1 * 3600 + $2 * 60 + $3 + $4;
-			$self->update_progress(50.0 + (($movie_converted / $movie_duration) * 25.0));
+			my $movie_converted = $1 * 3600 + $2 * 60 + $3 + $4;
+			# Safeguard against division by zero
+			if ($movie_duration > 0) {
+				$self->update_progress(50.0 + (($movie_converted / $movie_duration) * 25.0));
+			}
 		}
 	}
 	close(FFMPEG);

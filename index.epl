@@ -11,26 +11,19 @@ $timestamp = int (gettimeofday * 1000);
 -]
 [- 
 $r = Apache2::RequestUtil->request;
-
-# send new cookie
 $ug = Data::UUID->new;
-
 $cookie = CGI::Cookie->new(-name  => 'session_id', -value => $ug->create_hex);
 $r->err_headers_out->add('Set-Cookie' => $cookie);
 -]
 <!doctype html>
 <html lang="en">
 	<head>
-		<!-- Required meta tags -->
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
-
-		<!-- Bootstrap CSS -->
 		<link href="bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 		<title>Drag & Drop Upload movie file to LED controller</title>
 	</head>
 	<body>
-
 		<div class="container">
 			<div class="card">
 				<div class="card-header">&nbsp;</div>
@@ -57,170 +50,54 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 </html>
 
 <style>
-.card {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	min-width: 0;
-	word-wrap: break-word;
-	background-color: #fff;
-	background-clip: border-box;
-	border: 1px solid rgba(0,0,0,0);
-	border-radius: .25rem
-}
-.card-header {
-	padding: .5rem 1rem;
-	margin-bottom: 0;
-	background-color: rgba(0,0,0,0);
-	border-bottom: 1px solid rgba(0,0,0,0)
-}
-
-#drag_drop {
-	background-color: #f9f9f9;
-	border: #ccc 4px dashed;
-	line-height: 250px;
-	padding: 12px;
-	font-size: 24px;
-	text-align: center;
-}
-
+.card { position: relative; display: flex; flex-direction: column; min-width: 0; word-wrap: break-word; background-color: #fff; background-clip: border-box; border: 1px solid rgba(0,0,0,0); border-radius: .25rem }
+.card-header { padding: .5rem 1rem; margin-bottom: 0; background-color: rgba(0,0,0,0); border-bottom: 1px solid rgba(0,0,0,0) }
+#drag_drop { background-color: #f9f9f9; border: #ccc 4px dashed; line-height: 250px; padding: 12px; font-size: 24px; text-align: center; }
 </style>
 
 <script>
+function _(element) { return document.getElementById(element); }
 
-function _(element)
-{
-	return document.getElementById(element);
-}
+_('drag_drop').ondragover = function(event) { this.style.borderColor = '#333'; return false; }
+_('drag_drop').ondragleave = function(event) { this.style.borderColor = '#ccc'; return false; }
 
-_('drag_drop').ondragover = function(event)
-{
-	this.style.borderColor = '#333';
-	return false;
-}
-
-_('drag_drop').ondragleave = function(event)
-{
-	this.style.borderColor = '#ccc';
-	return false;
-}
-
-
-_('drag_drop').ondrop = function(event)
-{
+_('drag_drop').ondrop = function(event) {
 	event.preventDefault();
-
 	var form_data  = new FormData();
-	var error = '';
 	var drop_files = event.dataTransfer.files;
 	
-	if (drop_files.length <= 1) {
-		form_data.append("movie_file", drop_files[0]);
+	if (drop_files.length > 1) {
+		alert("Only supports upload of one file");
+		return;
 	}
-	else {
-		error += '<div class="alert alert-danger"><b>only supports upload of one file</div>';
-	}
+	form_data.append("movie_file", drop_files[0]);
 
-	if(error != '')
-	{
-		_('uploaded_image').innerHTML = error;
-		_('uploaded_image').style.display = 'block';
-		_('drag_drop').style.borderColor = '#ccc';
-		setTimeout(function() {
-			_('uploaded_image').style.display = 'none'; 
-			_('uploaded_image').innerHTML = '';
-		}, 3000);
-	}
-	else
-	{
-		_('progress_bar').style.display = 'block';
-		var ajax_request = new XMLHttpRequest();
-		ajax_request.open("post", "upload");
+	_('progress_bar').style.display = 'block';
 
-		ajax_request.addEventListener('error', function(event) {
-			console.log("An error occurred while attempting to connect. " + event.data);
-			_('progress_bar').style.display = 'none';
-			_('progress_bar_process').style.width = 0.0 + '%';
-			_('progress_bar_process').innerHTML = '';
-			_('drag_drop').style.borderColor = '#ccc';
-		});
-		ajax_request.addEventListener('load', function(event) {
-			if (ajax_request.status < 400) {
-//				console.log(event);
-				_('uploaded_image').innerHTML = '';
-//				_('drag_drop').style.borderColor = '#ccc';
-				
-//				source.close();
-//				_('progress_bar').style.display = 'none';
-//				_('progress_bar_process').style.width = 0.0 + '%';
-//				_('progress_bar_process').innerHTML = '';
-	
-//				var unique = Date.now();
-//				_('slitscan').src = 'images/slitscan.png?' + unique;
-			}
-			else {
-//				source.close();
-//				_('progress_bar').style.display = 'none';
-				_('uploaded_image').style.display = 'block';
-				_('uploaded_image').innerHTML = '<div class="alert alert-danger"><b>allready running</div>';
-//				_('drag_drop').style.borderColor = '#ccc';
-
-				setTimeout(function() {
-//					_('uploaded_image').style.display = 'none'; 
-//					_('drag_drop').style.borderColor = '#ccc';
-					_('uploaded_image').innerHTML = '';
-				}, 3000);
-			}
-		});
-//		ajax_request.addEventListener('loadend', function(event) {
-//			var unique = Date.now();
-//			_('slitscan').src = 'images/slitscan.png?' + unique;
-//		});
-		
-		source = new EventSource('progress');
-		source.addEventListener('error', function(event) {
-			console.log("An error occurred while attempting to connect. " + event.data);
+	// 1. Start EventSource FIRST so it's ready for the upload updates
+	var source = new EventSource('progress');
+	source.addEventListener('message', function(event) {
+		if (event.data == "DONE") {
 			source.close();
 			_('progress_bar').style.display = 'none';
-			_('progress_bar_process').style.width = 0.0 + '%';
-			_('progress_bar_process').innerHTML = '';
-			_('drag_drop').style.borderColor = '#ccc';
-		});
-		source.addEventListener('message', function(event) {
-			console.log(event.data);
-			var percent_completed = Math.round(event.data);
-			if (isNaN(percent_completed) == false) {
-				_('progress_bar_process').style.width = percent_completed + '%';
-				_('progress_bar_process').innerHTML = percent_completed + '%';
-			}
-			else if (event.data == "DONE") {
-				source.close();
-				_('progress_bar').style.display = 'none';
-				_('progress_bar_process').style.width = 0.0 + '%';
-				_('progress_bar_process').innerHTML = '';
-				_('drag_drop').style.borderColor = '#ccc';
-				
-				var unique = Date.now();
-				_('slitscan').src = 'images/slitscan.png?' + unique;
-			}
-			else if (event.data == "ERROR") {
-				source.close();
-				_('progress_bar').style.display = 'none';
-				_('progress_bar_process').style.width = 0.0 + '%';
-				_('progress_bar_process').innerHTML = '';
-				_('uploaded_image').style.display = 'block';
-				_('uploaded_image').innerHTML = '<div class="alert alert-danger"><b>server side processing failed</div>';
-				_('drag_drop').style.borderColor = '#ccc';
+			_('slitscan').src = 'images/slitscan.png?' + Date.now();
+		} else {
+			var percent = Math.round(event.data);
+			_('progress_bar_process').style.width = percent + '%';
+			_('progress_bar_process').innerHTML = percent + '%';
+		}
+	});
 
-				setTimeout(function() {
-//					_('uploaded_image').style.display = 'none'; 
-					_('uploaded_image').innerHTML = '';
-				}, 3000);
-			}
-		}, false);		
-
-		ajax_request.send(form_data);
-	}
+	// 2. NOW perform the upload
+	var ajax_request = new XMLHttpRequest();
+	ajax_request.open("post", "upload");
+	ajax_request.addEventListener('load', function(event) {
+		if (ajax_request.status >= 400) {
+			source.close();
+			_('uploaded_image').innerHTML = '<div class="alert alert-danger"><b>Already running or error</div>';
+			setTimeout(function() { _('uploaded_image').innerHTML = ''; }, 3000);
+		}
+	});
+	ajax_request.send(form_data);
 }
-
 </script>

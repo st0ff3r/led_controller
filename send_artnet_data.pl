@@ -83,11 +83,25 @@ $SIG{KILL} = sub { print "$0 received SIGKILL\n"; $cross_fade_state = 'fade_out'
 
 my @pixel_line;
 my ($red, $green, $blue);
+
+# Wait until the data file exists and is not empty
+print "Waiting for artnet data file: $artnet_data_file\n";
+while (!-s $artnet_data_file) {
+	sleep 1;
+}
 open(FH, '<', $artnet_data_file) or warn $!;
 $artnet_data = do { local $/; <FH> };	# read all data into memory
 $artnet_data =~ s/^(.*)//;
+
 $fps = $1;
+# Force numeric conversion
+if ($raw_fps =~ /^(\d+)\/(\d+)$/) {
+	$fps = $1 / $2;
+} else {
+	$fps = $raw_fps;
+}
 print "frame rate: $fps\n";
+
 $cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
 close FH;
 while (1) {
