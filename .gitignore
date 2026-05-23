@@ -1,0 +1,7 @@
+*.mov
+*.mkv
+*.conf~
+*.mp4
+*.png
+*.data
+.DS_Store

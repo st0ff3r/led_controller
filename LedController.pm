@@ -56,8 +56,17 @@ sub movie_to_artnet {
 	# movie file was uploaded
 	$self->{redis}->set('progress', '50.0');	# 50% done
 #	warn "ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=r_frame_rate $movie_file 2>&1";
-	my $fps = `ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=r_frame_rate $movie_file 2>&1`;
-	$fps = eval($fps);	
+	my $fps_str;
+	if (open(my $fh, "-|", "ffprobe", "-v", "error", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", $movie_file)) {
+		$fps_str = <$fh>;
+		close($fh);
+	}
+
+	my $fps;
+	if (defined $fps_str && $fps_str =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) {
+		$fps = $1;
+	}
+	
 	if (!$fps) {
 		$self->{redis}->set('progress', '-1');	# signaling an error to web client
 		return 0;	
@@ -73,10 +82,8 @@ sub movie_to_artnet {
 #				qq[ -vf "scale=] . $config->param('num_pixels') . qq[:-2:flags=neighbor,crop=] . $config->param('num_pixels') . qq[:1:0:" ] .
 #				"-r " . $fps . " " . 
 #				$temp_dir . "/%08d.png");
-	open(FFMPEG, "ffmpeg -i " . $movie_file . 
-				qq[ -progress - -vf "scale=] . $config->param('num_pixels') . qq[:-2:flags=neighbor,crop=] . $config->param('num_pixels') . qq[:1:0:" ] .
-				"-r " . $fps . " " . 
-				$temp_dir . "/%08d.png 2>&1 |");
+	my $ffmpeg_vf = "scale=" . $config->param('num_pixels') . ":-2:flags=neighbor,crop=" . $config->param('num_pixels') . ":1:0:";
+	open(FFMPEG, "-|", "ffmpeg", "-i", $movie_file, "-progress", "-", "-vf", $ffmpeg_vf, "-r", $fps, $temp_dir . "/%08d.png");
 	# read and parse output from ffmpeg and update progress stats
 	while (<FFMPEG>) {
 		if (/Duration: (\d{2}):(\d{2}):(\d{2})(\.\d+),/) {
@@ -88,6 +95,7 @@ sub movie_to_artnet {
 			$self->{redis}->set('progress', 50.0 + ($movie_convertion_progress * 25.0));	# 50% - 75% done
 		}
 	}
+	close(FFMPEG);
 	
 	# get all images
 	opendir(DIR, $temp_dir) || die "can't opendir $temp_dir: $!";

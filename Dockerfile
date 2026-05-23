@@ -1,28 +1,13 @@
-#
-# uIota Dockerfile
-#
-# The resulting image will contain everything needed to build uIota FW.
-#
-# Setup: (only needed once per Dockerfile change)
-# 1. install docker, add yourself to docker group, enable docker, relogin
-# 2. # docker build -t uiota-build .
-#
-# Usage:
-# 3. cd to MeterLoggerWeb root
-# 4. # docker run -t -i -p 8080:80 meterloggerweb:latest
-
-
-FROM debian:buster
+FROM debian:bookworm
 
 MAINTAINER Kristoffer Ek <stoffer@skulp.net>
 
-RUN "echo" "deb http://http.us.debian.org/debian buster non-free" >> /etc/apt/sources.list
+# Enable non-free for Debian Bookworm
+RUN echo "deb http://deb.debian.org/debian bookworm non-free non-free-firmware" >> /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -y \
-	aptitude \
 	autoconf \
 	automake \
-	aptitude \
 	bash \
 	bison \
 	cpanplus \
@@ -38,7 +23,7 @@ RUN apt-get update && apt-get install -y \
 	sudo \
 	screen \
 	rsync \
-	redis \
+	redis-server \
 	apache2 \
 	apache2-bin \
 	apache2-doc \
@@ -58,7 +43,8 @@ RUN apt-get update && apt-get install -y \
 	libdata-uuid-perl \
 	ffmpeg \
 	imagemagick \
-	tcpdump
+	tcpdump \
+	&& rm -rf /var/lib/apt/lists/*
 
 USER root
 
@@ -94,4 +80,3 @@ COPY ./bootstrap.min.css /var/www/led_controller/
 COPY ./bootstrap.min.css.map /var/www/led_controller/
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
-
