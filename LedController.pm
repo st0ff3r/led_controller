@@ -111,6 +111,8 @@ sub movie_to_artnet {
 	my $step_counter = 0;
 	my $progress_inc = $total_steps > 0 ? (25.0 / $total_steps) : 0;
 	
+	warn "[LedController] Starting slitscan image build (height: $slitscan_image_height)\n";
+	
 	my $i = 0;
 	# Process frames to ArtNet
 	foreach (@images) {
@@ -123,6 +125,10 @@ sub movie_to_artnet {
 			$self->{slitscan_image}->SetPixel(x => $x, y => $i, color => [$red, $green, $blue]) if $i < $slitscan_image_height;
 		}
 		print $fh_out "\n";
+		
+		if ($i % 100 == 0) {
+			warn "[LedController] Slitscan build progress: frame $i/$total_frames\n";
+		}
 		
 		if ($step_counter % $update_threshold == 0) {
 			$self->update_progress(75.0 + ($step_counter * $progress_inc));
@@ -148,6 +154,8 @@ sub movie_to_artnet {
 			$step_counter++;
 		}
 	}
+	warn "[LedController] Slitscan image build finished.\n";
+	
 	close($fh_out);
 	move($temp_artnet_data_file, $artnet_data_file) || die $!;
 	remove_tree($temp_dir);
@@ -160,11 +168,27 @@ sub movie_to_artnet {
 sub movie_to_slitscan {
 	my $self = shift;
 	my %p = @_;
+	
+	warn "[LedController] Starting slitscan image creation...\n";
+	
+	# Create temp file
 	my ($fh, $temp_file) = tempfile( CLEANUP => 0, SUFFIX => '.png');
+	
+	# Added log before Magick Write
+	warn "[LedController] Writing slitscan image to temp: $temp_file\n";
 	$self->{slitscan_image}->Write($temp_file);
 	close($fh);
-	move($temp_file, $p{slitscan_file}) || die $!;
+	
+	# Move to final destination
+	warn "[LedController] Moving slitscan to final destination: $p{slitscan_file}\n";
+	move($temp_file, $p{slitscan_file}) || die "Move failed: $!";
+	
+	# Clean up temp file immediately after move
+	unlink $temp_file if -e $temp_file;
+	
 	$self->update_progress(100.0);
+	warn "[LedController] Slitscan generation complete (100%)\n";
+	
 	sleep 2;	
 }
 

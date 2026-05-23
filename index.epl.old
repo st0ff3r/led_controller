@@ -32,7 +32,6 @@ if (defined $fdat{movie_file}) {
 	
 	$c = new LedController;
 	$c->movie_to_artnet(movie_file => $temp_file, artnet_data_file => "/led_controller/data/artnet.data", loop_forth_and_back => $loop);
-	$c->movie_to_slitscan(slitscan_file => "/var/www/led_controller/images/slitscan.png");
 	
 	unlink $temp_file;
 }
