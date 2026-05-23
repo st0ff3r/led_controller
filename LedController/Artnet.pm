@@ -199,7 +199,11 @@ sub add_artnet_to_queue {
 	# Then add the job to the queue
 	$self->{redis}->rpush(join(':', $p{queue}, 'queue'), $job_id);
 	
-	$self->{redis}->set('fps', $p{fps});
+	# Only update if the value has changed
+	my $current_fps = $self->{redis}->get('fps');
+	if (!defined $current_fps || $current_fps != $p{fps}) {
+		$self->{redis}->set('fps', $p{fps});
+	}
 }
 
 1;

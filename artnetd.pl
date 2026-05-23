@@ -92,13 +92,18 @@ while (1) {
 	}
 	
 	$fps = $redis->get('fps');
-	if ($fps != $last_fps) {
-		print "frame rate changed: " . $fps . "\n";
-		# reset stats and frame rate adjustment
-		@stats = ();
-		$fps_adjustment = 0;
+	# Only check FPS from Redis once per second
+	my $last_fps_check_time = 0;
+	if (time() > $last_fps_check_time) {
+		$fps = $redis->get('fps');
+		if ($fps != $last_fps) {
+			print "frame rate changed: " . $fps . "\n";
+			@stats = ();
+			$fps_adjustment = 0;
+		}
+		$last_fps = $fps;
+		$last_fps_check_time = time();
 	}
-	$last_fps = $fps;
 
 	# update fps stats
 	if (@stats > $fps * 60) {	# a time window of a minute for stats
