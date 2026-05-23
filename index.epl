@@ -66,7 +66,7 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 					<div class="row">
 						<div class="col-md-3">&nbsp;</div>
 						<div class="col-md-6">
-							<div id="drag_drop">Drag & Drop movie file here or Click to browse
+							<div id="drag_drop">Drag & drop or click to upload
 								<input type="file" id="file_input" style="display: none;" accept="video/*">
 								
 								<div class="progress" id="progress_bar" style="display:none; height:50px;">
