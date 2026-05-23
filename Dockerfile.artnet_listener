@@ -1,0 +1,9 @@
+FROM led-controller-base:latest
+
+COPY ./artnet.conf /led_controller/
+COPY ./LedController.pm /led_controller/
+COPY ./LedController/ /led_controller/LedController/
+COPY ./artnet_listener.pl /led_controller/
+
+# Runs as root
+CMD ["perl", "./artnet_listener.pl"]

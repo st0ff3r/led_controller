@@ -1,0 +1,9 @@
+FROM led-controller-base:latest
+
+COPY ./artnet.conf /led_controller/
+COPY ./LedController.pm /led_controller/
+COPY ./LedController/ /led_controller/LedController/
+COPY ./send_artnet_data.pl /led_controller/
+
+USER www-data
+CMD ["perl", "./send_artnet_data.pl"]

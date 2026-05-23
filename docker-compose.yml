@@ -1,27 +1,107 @@
 services:
-  led_controller:
-    build: .
-    container_name: led_controller
-    image: led_controller:latest
-    restart: unless-stopped
+  # 0. Base Image Factory Layer (Build-only, hidden from runtime up/start commands)
+  base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    image: led-controller-base:latest
+    container_name: led_base_builder
+    command: ["echo", "Base image verified locally."]
+    profiles:
+      - build-only
+
+  # 1. Apache Frontend Web Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: led_web
     ports:
       - "80:80"
-      - "6454:6454/udp"
     volumes:
-      - led_data:/led_controller/data
-      - led_data:/var/www/led_controller/images
+      - led_data:/images:/var/www/led_controller/images
+      - led_data:/data:/led_controller/data
+      - led_data:/tmp:/tmp
     depends_on:
       - redis
     environment:
       - REDIS_HOST=redis
+    restart: unless-stopped
 
+  # 2. Sun Tracker Worker
+  sun-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile.sun_tracker
+    container_name: led_sun_tracker
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  # 3. Movie Processing Worker
+  movie-to-artnet-data-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.movie_to_artnet_data_worker
+    container_name: movie-to-artnet-data-worker
+    volumes:
+      - led_data:/images:/var/www/led_controller/images
+      - led_data:/led_controller/data
+      - led_data:/tmp:/tmp
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  # 4. Artnet Live Sender Service
+  artnet-sender:
+    build:
+      context: .
+      dockerfile: Dockerfile.send_artnet_data
+    container_name: led_artnet_sender
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  # 5. Artnet Daemon Context (Exposes UDP Port 6454)
+  artnet-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.artnetd
+    container_name: led_artnet_daemon
+    ports:
+      - "6454:6454/udp"
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  # 6. Artnet Listener (Exposes UDP Port 6454 if needed alternately)
+  artnet-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile.artnet_listener
+    container_name: led_artnet_listener
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  # Redis Datastore Container
   redis:
-    # Downgrade to 7.4 to avoid recent instruction-set issues on rpi
+    # Kept at 7.4 to avoid instruction-set issues on Raspberry Pi
     image: redis:7.4-alpine
     container_name: led_redis
-    restart: unless-stopped
     volumes:
       - redis_data:/data
+    restart: unless-stopped
 
 volumes:
   led_data:

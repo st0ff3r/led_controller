@@ -1,0 +1,11 @@
+FROM led-controller-base:latest
+
+COPY ./artnet.conf /led_controller/
+COPY ./LedController.pm /led_controller/
+COPY ./LedController/ /led_controller/LedController/
+COPY ./movie_to_artnet_data_worker.pl /led_controller/
+
+RUN chown -R www-data:www-data /led_controller/data
+
+USER www-data
+CMD ["perl", "./movie_to_artnet_data_worker.pl"]
