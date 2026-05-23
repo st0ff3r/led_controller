@@ -84,7 +84,7 @@ while (1) {
 	$subscriber->wait_for_messages(0.01);
 
 	# Check for Redis trigger to load new data
-	if ($redis->get('trigger_new_data') eq '1') {
+	if (($redis->get('trigger_new_data') || '0') eq '1') {
 		$redis->set('trigger_new_data', '0');
 		$cross_fade_state = 'fade_out';
 		
