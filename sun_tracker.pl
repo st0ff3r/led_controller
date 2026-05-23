@@ -1,21 +1,20 @@
-#! /usr/bin/perl -w
+#!/usr/bin/perl -w
 
 use strict;
+$| = 1; # Force autoflush
 use Config::Simple;
-use IPC::ShareLite;
-use Proc::Killall;
 use DateTime;
 use DateTime::Event::Sunrise;
 use DateTime::Duration;
-use IPC::ShareLite;
-use Proc::Killall;
 use IO::Async::Timer::Periodic;
 use IO::Async::Loop;
+use Redis;
 use Data::Dumper;
 
 use constant ARTNET_CONF => 'artnet.conf';
 
 my $config = new Config::Simple(ARTNET_CONF);
+my $redis = Redis->new(server => 'redis:6379');
 
 my $loop = IO::Async::Loop->new;
 
@@ -64,26 +63,19 @@ sub do_calculation {
 		$state = 'rising';
 		$elapsed_time = $_;
 	}
-	$_ = $now - $current_rise_end;
-	
-#	warn "$state\n";
 	
 	if ($state eq 'up') {
-#		print "sun up " . $sunrise_end->current($dt_now) . " down " . $sunset_start->next($dt_now) . " now " . $dt_now . "\n";
 		set_intensity(0.0);
 	}
 	elsif ($state eq 'setting') {
-#		print "sun up " . $sunrise_end->next($dt_now) . " down " . $sunset_start->next($dt_now) . " now " . $dt_now . "\n";
 		my $next_set_end = $sunset_end->next($dt_now)->epoch;
 		my $dur = $next_set_end - $current_set_start;
 		set_intensity($elapsed_time * (1 / $dur));
 	}
 	elsif ($state eq 'down') {
-#		print "sun up " . $sunrise_end->next($dt_now) . " down " . $sunset_start->next($dt_now) . " now " . $dt_now . "\n";
 		set_intensity(1.0);
 	}
 	elsif ($state eq 'rising') {
-#		print "sun up " . $sunrise_end->next($dt_now) . " down " . $sunset_start->next($dt_now) . " now " . $dt_now . "\n";
 		my $next_rise_end = $sunrise_end->next($dt_now)->epoch;
 		my $dur = $next_rise_end - $current_rise_start;
 		set_intensity(1 - ($elapsed_time * (1 / $dur)));
@@ -93,18 +85,11 @@ sub do_calculation {
 sub set_intensity {
 	my $intensity = shift;
 	
-#	warn "intensity: $intensity\n";
-
-	my $share = IPC::ShareLite->new(
-		-key		=> 6454,
-		-create		=> 'yes',
-		-destroy	=> 'no'
-	) or die $!;
-
-	$share->store($intensity);
-	killall('USR1', 'send_artnet_data');
+	# Update Redis
+	$redis->set('intensity', $intensity);
+	
+	# Publish to trigger send_artnet_data to refresh
+	$redis->publish('intensity_update', 'refresh');
 }
 
 1;
-
-__END__

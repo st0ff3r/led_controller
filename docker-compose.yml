@@ -10,6 +10,18 @@ services:
     volumes:
       - led_data:/led_controller/data
       - led_data:/var/www/led_controller/images
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+
+  redis:
+    image: redis:alpine
+    container_name: led_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
 
 volumes:
   led_data:
+  redis_data:

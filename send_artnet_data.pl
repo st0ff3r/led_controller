@@ -3,7 +3,6 @@
 use strict;
 use Time::HiRes qw(usleep gettimeofday tv_interval);
 use Config::Simple;
-use IPC::ShareLite;
 use Data::Dumper;
 use Redis;
 
@@ -15,30 +14,29 @@ $| = 1; # Force autoflush
 
 my $config = new Config::Simple(ARTNET_CONF);
 my $redis = Redis->new(server => 'redis:6379');
+my $subscriber = Redis->new(server => 'redis:6379');
+
+# Define intensity variables
+my $intensity = $redis->get('intensity') || 0.0;
+my $intensity_artnet = $redis->get('intensity_artnet') || 0.0;
+
+# Subscribe to intensity updates with callback
+$subscriber->subscribe('intensity_update', sub {
+	my ($message, $topic, $subscribed_topic) = @_;
+	$intensity = $redis->get('intensity');
+	$intensity_artnet = $redis->get('intensity_artnet');
+});
+
 my $artnet_data_file = $ARGV[0] || "data/artnet.data";
 my $artnet_data = '';
 my $new_artnet_data = '';
 
-my $intensity = 0.0;
-my $intensity_artnet = 0.0;
 my $cross_fade_intensity = 0.0;
 my $cross_fade_state = 'fade_in';
 my $fps = 0;
 
 my $cross_fade_time = $config->param('cross_fade_time') || 2;
 my $cross_fade_per_step = 0.0;
-
-my $share_intensity = IPC::ShareLite->new(
-	-key		=> 6454,
-	-create		=> 'yes',
-	-destroy	=> 'yes'
-) or die $!;
-
-my $share_intensity_artnet = IPC::ShareLite->new(
-	-key		=> 6455,
-	-create		=> 'yes',
-	-destroy	=> 'yes'
-) or die $!;
 
 # network connection
 my $artnet = new LedController::Artnet(
@@ -51,17 +49,9 @@ my $artnet = new LedController::Artnet(
 	is_mirrored_on_second_port => $config->param('is_mirrored_on_second_port')
 );
 
-$SIG{USR1} = sub {
-	$intensity = $share_intensity->fetch;
-	$intensity_artnet = $share_intensity_artnet->fetch;
-};
-
 my $should_exit = 0;
 $SIG{TERM} = sub { print "$0 received SIGTERM\n"; $cross_fade_state = 'fade_out'; $should_exit = 1 };
 $SIG{KILL} = sub { print "$0 received SIGKILL\n"; $cross_fade_state = 'fade_out'; $should_exit = 1 };
-
-my @pixel_line;
-my ($red, $green, $blue);
 
 # Wait until the data file exists and has content
 print "Waiting for artnet data file: $artnet_data_file\n";
@@ -86,7 +76,13 @@ $fps = 30 if $fps <= 0;
 print "frame rate: $fps\n";
 $cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
 
+my @pixel_line;
+my ($red, $green, $blue);
+
 while (1) {
+	# Process Redis Pub/Sub messages
+	$subscriber->wait_for_messages(0.01);
+
 	# Check for Redis trigger to load new data
 	if ($redis->get('trigger_new_data') eq '1') {
 		$redis->set('trigger_new_data', '0');

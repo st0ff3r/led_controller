@@ -1,21 +1,25 @@
-#! /usr/bin/perl -w
+#!/usr/bin/perl -w
 
+use strict;
 use Config::Simple;
-use IPC::ShareLite;
-use Proc::Killall;
+use Redis;
 use Data::Dumper;
 
 use constant ARTNET_CONF => 'artnet.conf';
+
+$| = 1; # Force autoflush
+
+# Connect to the Redis container
+my $redis = Redis->new(server => 'redis:6379');
 
 my $config = new Config::Simple(ARTNET_CONF);
 
 my $intensity = $ARGV[0];
 
-my $share = IPC::ShareLite->new(
-	-key		=> 6454,
-	-create		=> 'yes',
-	-destroy	=> 'no'
-) or die $!;
+# Update intensity in Redis
+$redis->set('intensity', $intensity);
 
-$share->store($intensity);
-killall('USR1', 'send_artnet_data');
+# Publish update so send_artnet_data.pl picks up the new value
+$redis->publish('intensity_update', 'refresh');
+
+print "Intensity set to $intensity and update published.\n";
