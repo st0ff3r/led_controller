@@ -1,24 +1,15 @@
-#
-# uIota Dockerfile
-#
-# The resulting image will contain everything needed to build uIota FW.
-#
-# Setup: (only needed once per Dockerfile change)
-# 1. install docker, add yourself to docker group, enable docker, relogin
-# 2. # docker build -t uiota-build .
-#
-# Usage:
-# 3. cd to MeterLoggerWeb root
-# 4. # docker run -t -i -p 8080:80 meterloggerweb:latest
-
-
 FROM debian:buster
 
 MAINTAINER Kristoffer Ek <stoffer@skulp.net>
 
-RUN "echo" "deb http://http.us.debian.org/debian buster non-free" >> /etc/apt/sources.list
+# Fix EOL repository paths by pointing them to archive.debian.org
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+	sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+	sed -i '/buster-updates/d' /etc/apt/sources.list
 
-RUN apt-get update && apt-get install -y \
+RUN echo "deb http://archive.debian.org/debian buster non-free" >> /etc/apt/sources.list
+
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
 	aptitude \
 	autoconf \
 	automake \
@@ -94,4 +85,3 @@ COPY ./bootstrap.min.css /var/www/led_controller/
 COPY ./bootstrap.min.css.map /var/www/led_controller/
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]
-
