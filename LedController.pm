@@ -179,6 +179,8 @@ sub movie_to_slitscan {
 	$self->{slitscan_image}->Write($temp_file);
 	close($fh);
 	
+	$self->{slitscan_image} = Image::Magick->new;
+	
 	# Move to final destination
 	warn "[LedController] Moving slitscan to final destination: $p{slitscan_file}\n";
 	move($temp_file, $p{slitscan_file}) || die "Move failed: $!";

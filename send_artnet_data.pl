@@ -22,7 +22,7 @@ my $cross_fade_state = 'fade_in';
 my $fps = 0;
 
 my $cross_fade_time = $config->param('cross_fade_time') || 2;
-my $cross_fade_per_step;
+my $cross_fade_per_step = 0.0;
 
 my $share_intensity = IPC::ShareLite->new(
 	-key		=> 6454,
@@ -67,6 +67,7 @@ $SIG{USR2} = sub {
 	$fps ||= 30; # Safety default
 	print "frame rate: $fps\n";
 	$cross_fade_per_step = 1 / ($cross_fade_time * $fps) / 2;
+	warn "[DEBUG] cross_fade_per_step updated to $cross_fade_per_step\n";
 	close $fh;
 };
 
@@ -140,12 +141,16 @@ while (1) {
 		}
 		
 		my $i = 0;
+		# Force numeric values with '|| 0.0'
+		$intensity = ($intensity || 0.0);
+		$intensity_artnet = ($intensity_artnet || 0.0);
+	
 		while (($red, $green, $blue) = splice(@pixel_line, 0, 3)) {
 			$artnet->set_pixel(
 				pixel => $i,
-				red => $intensity_artnet * $intensity * hex($red) * $cross_fade_intensity,
+				red   => $intensity_artnet * $intensity * hex($red)   * $cross_fade_intensity,
 				green => $intensity_artnet * $intensity * hex($green) * $cross_fade_intensity,
-				blue => $intensity_artnet * $intensity * hex($blue) * $cross_fade_intensity
+				blue  => $intensity_artnet * $intensity * hex($blue)  * $cross_fade_intensity
 			);
 			$i++;
 		}

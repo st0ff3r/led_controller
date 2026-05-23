@@ -74,13 +74,15 @@ _('drag_drop').ondrop = function(event) {
 
 	_('progress_bar').style.display = 'block';
 
-	// 1. Start EventSource FIRST so it's ready for the upload updates
+	// 1. Start EventSource to monitor progress
 	var source = new EventSource('progress');
 	source.addEventListener('message', function(event) {
 		if (event.data == "DONE") {
 			source.close();
 			_('progress_bar').style.display = 'none';
-			_('slitscan').src = 'images/slitscan.png?' + Date.now();
+			
+			// Start polling to ensure the image is fully ready and readable
+			pollForImage();
 		} else {
 			var percent = Math.round(event.data);
 			_('progress_bar_process').style.width = percent + '%';
@@ -88,7 +90,7 @@ _('drag_drop').ondrop = function(event) {
 		}
 	});
 
-	// 2. NOW perform the upload
+	// 2. Perform the upload
 	var ajax_request = new XMLHttpRequest();
 	ajax_request.open("post", "upload");
 	ajax_request.addEventListener('load', function(event) {
@@ -99,5 +101,25 @@ _('drag_drop').ondrop = function(event) {
 		}
 	});
 	ajax_request.send(form_data);
+}
+
+// Polling function to handle "file not ready yet" scenarios
+function pollForImage() {
+	var img = new Image();
+	var newUrl = 'images/slitscan.png?' + Date.now();
+	
+	img.onload = function() {
+		// Image loaded successfully and is not 0 bytes
+		_('slitscan').src = newUrl;
+		console.log("Slitscan loaded successfully.");
+	};
+	
+	img.onerror = function() {
+		// Image not ready or corrupted (0 bytes), retry in 1 second
+		console.log("Slitscan not ready, retrying...");
+		setTimeout(pollForImage, 1000);
+	};
+	
+	img.src = newUrl;
 }
 </script>
