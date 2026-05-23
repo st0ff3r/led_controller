@@ -76,6 +76,7 @@ COPY ./test.mov /led_controller/
 COPY ./000-default.conf /etc/apache2/sites-available/
 COPY ./startup.pl /etc/apache2/perl/
 COPY ./index.epl /var/www/led_controller/
+COPY ./upload.js /var/www/led_controller/
 COPY ./bootstrap.min.css /var/www/led_controller/
 COPY ./bootstrap.min.css.map /var/www/led_controller/
 

@@ -22,6 +22,35 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<link href="bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 		<title>Drag & Drop Upload movie file to LED controller</title>
+		<style>
+			.card {
+				position: relative;
+				display: flex;
+				flex-direction:
+				column; min-width: 0;
+				word-wrap: break-word;
+				background-color: #fff;
+				background-clip:
+				border-box;
+				border: 1px solid rgba(0,0,0,0);
+				border-radius: .25rem
+			}
+			.card-header {
+				padding: .5rem 1rem;
+				margin-bottom: 0;
+				background-color: rgba(0,0,0,0);
+				border-bottom: 1px solid rgba(0,0,0,0)
+			}
+			#drag_drop {
+				background-color: #f9f9f9;
+				border: #ccc 4px dashed;
+				line-height: 25px;
+				padding: 12px;
+				font-size:
+				24px; text-align:
+				center;
+			}
+		</style>
 	</head>
 	<body>
 		<div class="container">
@@ -31,8 +60,7 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 					<div class="row">
 						<div class="col-md-3">&nbsp;</div>
 						<div class="col-md-6">
-							<div id="drag_drop">Click or Drag & Drop movie file here
-								<input type="file" id="file_input" style="display:none;" accept="video/*">
+							<div id="drag_drop">Drag & Drop movie file here
 								<div class="progress" id="progress_bar" style="display:none; height:50px;">
 									<div class="progress-bar bg-success" id="progress_bar_process" role="progressbar" style="width:0%; height:50px;">0%</div>
 								</div>
@@ -47,87 +75,6 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 				</div>
 			</div>
 		</div>
+		<script src="upload.js"></script>
 	</body>
 </html>
-
-<style>
-.card { position: relative; display: flex; flex-direction: column; min-width: 0; word-wrap: break-word; background-color: #fff; background-clip: border-box; border: 1px solid rgba(0,0,0,0); border-radius: .25rem }
-.card-header { padding: .5rem 1rem; margin-bottom: 0; background-color: rgba(0,0,0,0); border-bottom: 1px solid rgba(0,0,0,0) }
-#drag_drop { background-color: #f9f9f9; border: #ccc 4px dashed; line-height: 250px; padding: 12px; font-size: 24px; text-align: center; cursor: pointer; }
-</style>
-
-<script>
-function _(element) { return document.getElementById(element); }
-
-// UI Event Handlers
-_('drag_drop').ondragover = function(event) { this.style.borderColor = '#333'; return false; }
-_('drag_drop').ondragleave = function(event) { this.style.borderColor = '#ccc'; return false; }
-
-// Trigger hidden file input on click
-_('drag_drop').onclick = function() {
-    _('file_input').click();
-};
-
-_('file_input').onchange = function(event) {
-    handleFileUpload(event.target.files);
-};
-
-_('drag_drop').ondrop = function(event) {
-	event.preventDefault();
-	handleFileUpload(event.dataTransfer.files);
-}
-
-// Unified Upload Logic
-function handleFileUpload(files) {
-	if (files.length > 1) {
-		alert("Only supports upload of one file");
-		return;
-	}
-	var form_data = new FormData();
-	form_data.append("movie_file", files[0]);
-
-	_('progress_bar').style.display = 'block';
-
-	var source = new EventSource('progress');
-	source.addEventListener('message', function(event) {
-		if (event.data == "DONE") {
-			source.close();
-			_('progress_bar').style.display = 'none';
-			pollForImage();
-		} else {
-			var percent = Math.round(event.data);
-			_('progress_bar_process').style.width = percent + '%';
-			_('progress_bar_process').innerHTML = percent + '%';
-		}
-	});
-
-	var ajax_request = new XMLHttpRequest();
-	ajax_request.open("post", "upload");
-	ajax_request.addEventListener('load', function(event) {
-		if (ajax_request.status >= 400) {
-			source.close();
-			_('uploaded_image').innerHTML = '<div class="alert alert-danger"><b>Already running or error</b></div>';
-			setTimeout(function() { _('uploaded_image').innerHTML = ''; }, 3000);
-		}
-	});
-	ajax_request.send(form_data);
-}
-
-// Polling function to handle "file not ready yet" scenarios
-function pollForImage() {
-	var img = new Image();
-	var newUrl = 'images/slitscan.png?' + Date.now();
-	
-	img.onload = function() {
-		_('slitscan').src = newUrl;
-		console.log("Slitscan loaded successfully.");
-	};
-	
-	img.onerror = function() {
-		console.log("Slitscan not ready, retrying...");
-		setTimeout(pollForImage, 1000);
-	};
-	
-	img.src = newUrl;
-}
-</script>
