@@ -16,7 +16,8 @@ services:
       - REDIS_HOST=redis
 
   redis:
-    image: redis:alpine
+    # Downgrade to 7.4 to avoid recent instruction-set issues on rpi
+    image: redis:7.2-alpine
     container_name: led_redis
     restart: unless-stopped
     volumes:
