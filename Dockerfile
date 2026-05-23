@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 	automake \
 	bash \
 	bison \
-	cpanplus \
+	cpanminus \
 	flex \
 	g++ \
 	gawk \
@@ -53,8 +53,8 @@ RUN mkdir -p /var/www/led_controller/images
 RUN chown -R www-data:www-data /led_controller
 RUN chown -R www-data:www-data /var/www/led_controller
 
-RUN PERL_MM_USE_DEFAULT=1 cpan install Proc::Killall
-RUN PERL_MM_USE_DEFAULT=1 cpan install IO::Async::Timer::Periodic
+RUN PERL_MM_USE_DEFAULT=1 cpanm Proc::Killall
+RUN PERL_MM_USE_DEFAULT=1 cpanm IO::Async::Timer::Periodic
 RUN a2dismod -f deflate
 
 COPY ./docker-entrypoint.sh /docker-entrypoint.sh
