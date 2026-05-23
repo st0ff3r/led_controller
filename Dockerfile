@@ -66,6 +66,7 @@ COPY ./LedController/Session.pm /led_controller/LedController/
 COPY ./LedController/Upload.pm /led_controller/LedController/
 COPY ./LedController/Progress.pm /led_controller/LedController/
 COPY ./artnetd.pl /led_controller/
+COPY ./movie_to_artnet_data_worker.pl /led_controller/
 COPY ./send_artnet_data.pl /led_controller/
 COPY ./movie_to_artnet.pl /led_controller/
 COPY ./led_control.pl /led_controller/
