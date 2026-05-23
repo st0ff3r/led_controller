@@ -3,6 +3,13 @@
 service apache2 start
 service redis-server start
 
+# --- Wait for Redis to be ready ---
+echo "Waiting for Redis to start..."
+while ! redis-cli ping | grep -q "PONG"; do
+    sleep 0.5
+done
+echo "Redis is ready!"
+
 chown -R www-data:www-data /led_controller/data
 cd /led_controller
 
