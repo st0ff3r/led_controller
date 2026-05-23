@@ -8,5 +8,8 @@ services:
       - "80:80"
       - "6454:6454/udp"
     volumes:
-      - ./persistent_data/artnet:/led_controller/data
-      - ./persistent_data/images:/var/www/led_controller/images
+      - led_data:/led_controller/data
+      - led_data:/var/www/led_controller/images
+
+volumes:
+  led_data:
