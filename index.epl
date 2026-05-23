@@ -11,7 +11,10 @@ $timestamp = int (gettimeofday * 1000);
 -]
 [- 
 $r = Apache2::RequestUtil->request;
+
+# send new cookie
 $ug = Data::UUID->new;
+
 $cookie = CGI::Cookie->new(-name  => 'session_id', -value => $ug->create_hex);
 $r->err_headers_out->add('Set-Cookie' => $cookie);
 -]
@@ -20,18 +23,19 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
+
 		<link href="bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 		<title>Drag & Drop Upload movie file to LED controller</title>
+
 		<style>
 			.card {
 				position: relative;
 				display: flex;
-				flex-direction:
-				column; min-width: 0;
+				flex-direction: column;
+				min-width: 0;
 				word-wrap: break-word;
 				background-color: #fff;
-				background-clip:
-				border-box;
+				background-clip: border-box;
 				border: 1px solid rgba(0,0,0,0);
 				border-radius: .25rem
 			}
@@ -41,18 +45,20 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 				background-color: rgba(0,0,0,0);
 				border-bottom: 1px solid rgba(0,0,0,0)
 			}
+
 			#drag_drop {
 				background-color: #f9f9f9;
 				border: #ccc 4px dashed;
-				line-height: 25px;
+				line-height: 250px;
 				padding: 12px;
-				font-size:
-				24px; text-align:
-				center;
+				font-size: 24px;
+				text-align: center;
+				cursor: pointer; /* Makes it visually obvious that it's clickable */
 			}
 		</style>
 	</head>
 	<body>
+
 		<div class="container">
 			<div class="card">
 				<div class="card-header">&nbsp;</div>
@@ -60,7 +66,9 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 					<div class="row">
 						<div class="col-md-3">&nbsp;</div>
 						<div class="col-md-6">
-							<div id="drag_drop">Drag & Drop movie file here
+							<div id="drag_drop">Drag & Drop movie file here or Click to browse
+								<input type="file" id="file_input" style="display: none;" accept="video/*">
+								
 								<div class="progress" id="progress_bar" style="display:none; height:50px;">
 									<div class="progress-bar bg-success" id="progress_bar_process" role="progressbar" style="width:0%; height:50px;">0%</div>
 								</div>
@@ -68,13 +76,14 @@ $r->err_headers_out->add('Set-Cookie' => $cookie);
 								<div class="slitscan-div">
 									<img class="slitscan" id="slitscan" src="images/slitscan.png?[+ $timestamp +]">
 								</div>
-						</div>
+							</div>
 						</div>
 						<div class="col-md-3">&nbsp;</div>
 					</div>
 				</div>
 			</div>
 		</div>
+
 		<script src="upload.js"></script>
 	</body>
 </html>
