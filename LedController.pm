@@ -35,7 +35,10 @@ sub new {
 
 sub update_progress {
 	my ($self, $val) = @_;
-	$self->{redis}->set('progress', sprintf("%.1f", $val));
+	my $formatted = sprintf("%.1f", $val);
+	$self->{redis}->set('progress', $formatted);
+	# Log progress to Docker output
+	warn "[LedController] Progress updated to $formatted%\n";
 }
 
 sub movie_to_artnet {
@@ -46,8 +49,10 @@ sub movie_to_artnet {
 	my $artnet_data_file = $p{artnet_data_file};
 	my $loop_forth_and_back = $p{loop_forth_and_back} || undef;
 
+	warn "[LedController] Starting movie conversion: $movie_file\n";
 	$self->update_progress(50.0);
 	
+	# Detect frame rate
 	my $fps_str;
 	if (open(my $fh, "-|", "ffprobe", "-v", "error", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", $movie_file)) {
 		$fps_str = <$fh>;
@@ -56,24 +61,28 @@ sub movie_to_artnet {
 
 	my $fps;
 	if (defined $fps_str && $fps_str =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) { $fps = $1; }
-	if (!$fps) { $self->{redis}->set('progress', '-1'); return 0; }
+	if (!$fps) { 
+		warn "[LedController] ERROR: Failed to detect FPS\n";
+		$self->{redis}->set('progress', '-1'); 
+		return 0; 
+	}
 	
-	# Get duration using ffprobe for stability
+	# Get duration for progress calculation
 	my $movie_duration = 0;
 	my $duration_str = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $movie_file`;
 	chomp($duration_str);
 	$movie_duration = $duration_str if $duration_str =~ /^\d+(\.\d+)?$/;
 	
 	$temp_dir = tempdir( CLEANUP => 0 );
+	warn "[LedController] Temp dir created: $temp_dir\n";
 
 	my $ffmpeg_vf = "scale=" . $config->param('num_pixels') . ":-2:flags=neighbor,crop=" . $config->param('num_pixels') . ":1:0:";
 	
-	# Execute ffmpeg with stderr redirected to stdout to capture progress
+	# Execute ffmpeg extraction
 	open(FFMPEG, "-|", "ffmpeg", "-i", $movie_file, "-progress", "-", "-vf", $ffmpeg_vf, "-r", $fps, "$temp_dir/%08d.png");
 	while (<FFMPEG>) {
 		if (/out_time=(\d{2}):(\d{2}):(\d{2})(\.\d+)/) {
 			my $movie_converted = $1 * 3600 + $2 * 60 + $3 + $4;
-			# Safeguard against division by zero
 			if ($movie_duration > 0) {
 				$self->update_progress(50.0 + (($movie_converted / $movie_duration) * 25.0));
 			}
@@ -84,6 +93,7 @@ sub movie_to_artnet {
 	opendir(DIR, $temp_dir) || die "can't opendir $temp_dir: $!";
 	my @images = sort { $a cmp $b } grep { -f "$temp_dir/$_" } readdir(DIR);
 	closedir DIR;
+	warn "[LedController] Extracted " . scalar(@images) . " frames\n";
 
 	my $slitscan_image_height = scalar(@images) > SLITSCAN_IMAGE_MAX_HEIGHT ? SLITSCAN_IMAGE_MAX_HEIGHT : scalar(@images);
 	$self->{slitscan_image}->Set(size=>$config->param('num_pixels') . 'x' . $slitscan_image_height);
@@ -94,6 +104,8 @@ sub movie_to_artnet {
 	
 	my $i = 0;
 	my $progress_inc = 25.0 / (scalar(@images) + ($loop_forth_and_back ? scalar(@images) - 2 : 0));
+	
+	# Process frames to ArtNet
 	foreach (@images) {
 		my $p = new Image::Magick;
 		$p->Read("$temp_dir/$_");
@@ -124,6 +136,8 @@ sub movie_to_artnet {
 	close($fh_out);
 	move($temp_artnet_data_file, $artnet_data_file) || die $!;
 	remove_tree($temp_dir);
+	
+	warn "[LedController] Triggering USR2 signal for send_artnet_data\n";
 	killall('USR2', 'send_artnet_data');
 	return 1;
 }
