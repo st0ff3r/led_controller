@@ -17,8 +17,6 @@ terminate() {
 	artnetd_pid=$(pgrep -P  $sudo_artnetd_pid)
 	kill -TERM "$artnetd_pid" 2> /dev/null
 
-	# Tilføjet stop-logik for de nye workers
-	kill $movie_to_artnet_worker_pid 2> /dev/null
 	kill $movie_to_artnet_data_worker_pid 2> /dev/null
 }
 
@@ -26,10 +24,6 @@ trap terminate SIGTERM
 
 ./sun_tracker.pl &
 sleep 5
-
-# Start af nye workers
-sudo -u www-data ./movie_to_artnet_worker.pl &
-movie_to_artnet_worker_pid=$!
 
 sudo -u www-data ./movie_to_artnet_data_worker.pl &
 movie_to_artnet_data_worker_pid=$!
