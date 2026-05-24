@@ -14,11 +14,17 @@ window.addEventListener('load', function() {
 });
 
 function initProgressTracking() {
-	// Open connection immediately to get current status from server
+	// Clean up any stale or lingering connections before spawning a new one
+	if (source) {
+		console.log("[SSE] Cleaning up old connection instance...");
+		source.close();
+	}
+
+	console.log("[SSE] Opening fresh progress listener connection...");
 	source = new EventSource('progress');
 
 	source.addEventListener('error', function(event) {
-		console.log("SSE Connection closed or error.");
+		console.log("[SSE Error] Connection dropped or encountered an error. Closing handle.");
 		source.close();
 	});
 
@@ -46,6 +52,7 @@ function updateUI(data) {
 
 	// Catch the sentinel value -1.0 to handle the completion state
 	if (numeric_val === -1.0) {
+		console.log("[UI Completing] Sentinel -1.0 encountered. Closing SSE channel.");
 		if (source) {
 			source.close(); // Cut the network connection immediately
 		}
@@ -110,6 +117,9 @@ _('drag_drop').ondrop = function(event) {
 function handleFileUpload(file) {
 	var form_data = new FormData();
 	form_data.append("movie_file", file);
+
+	// FIXED: Force a fresh, clear SSE subscription link to start listening right as the upload initiates
+	initProgressTracking();
 
 	_('progress_bar').style.display = 'block';
 	var ajax_request = new XMLHttpRequest();
