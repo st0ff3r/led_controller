@@ -6,7 +6,6 @@ function _(element) {
 
 // Trigger hidden file input when clicking the drag & drop area
 _('drag_drop').onclick = function(event) {
-	// Avoid triggering input click again if elements inside are clicked
 	if (event.target.id === 'drag_drop' || event.target.tagName === 'DIV') {
 		_('file_input').click();
 	}
@@ -22,7 +21,7 @@ _('file_input').onchange = function(event) {
 
 // Drag and Drop event handlers
 _('drag_drop').ondragover = function(event) {
-	event.preventDefault(); // Required to allow dropping
+	event.preventDefault();
 	this.style.borderColor = '#333';
 	return false;
 };
@@ -53,41 +52,50 @@ function handleFileUpload(file) {
 	ajax_request.open("post", "upload");
 
 	ajax_request.addEventListener('error', function(event) {
-		console.log("An error occurred while attempting to connect. " + event.data);
+		console.log("An error occurred while attempting to connect.");
 		resetProgressBar();
 	});
 
 	ajax_request.addEventListener('load', function(event) {
-		if (ajax_request.status < 400) {
-			_('uploaded_image').innerHTML = '';
-		} else {
-			showUploadError('<div class="alert alert-danger"><b>allready running</div>');
+		if (ajax_request.status >= 400) {
+			showUploadError('<div class="alert alert-danger"><b>already running</div>');
 		}
 	});
 	
-	// Server-Sent Events for progress tracking
+	// Server-Sent Events for status tracking
 	source = new EventSource('progress');
 	
 	source.addEventListener('error', function(event) {
-		console.log("An error occurred while attempting to connect. " + event.data);
+		console.log("SSE Connection closed or error.");
 		source.close();
 		resetProgressBar();
 	});
 
 	source.addEventListener('message', function(event) {
-		console.log(event.data);
-		var percent_completed = Math.round(event.data);
+		var data = event.data;
+		console.log("Status update: " + data);
 		
-		if (!isNaN(percent_completed)) {
-			_('progress_bar_process').style.width = percent_completed + '%';
-			_('progress_bar_process').innerHTML = percent_completed + '%';
-		} else if (event.data == "DONE") {
+		// Map numerical status to UI states
+		if (data == "50.0") {
+			_('progress_bar_process').style.width = '50%';
+			_('progress_bar_process').innerHTML = 'Processing...';
+		} 
+		else if (data == "100.0") {
+			_('progress_bar_process').style.width = '100%';
+			_('progress_bar_process').innerHTML = 'Ready';
+			
+			// Close stream and finalize UI
+			source.close();
+			setTimeout(function() {
+				resetProgressBar();
+				_('slitscan').src = 'images/slitscan.png?' + Date.now();
+			}, 1500); // 1.5s delay so user sees "Ready"
+		} 
+		else if (data == "0.0") {
 			source.close();
 			resetProgressBar();
-			
-			var unique = Date.now();
-			_('slitscan').src = 'images/slitscan.png?' + unique;
-		} else if (event.data == "ERROR") {
+		} 
+		else if (data == "ERROR") {
 			source.close();
 			resetProgressBar();
 			showUploadError('<div class="alert alert-danger"><b>server side processing failed</div>');
@@ -103,7 +111,7 @@ function resetProgressBar() {
 	_('progress_bar_process').style.width = '0%';
 	_('progress_bar_process').innerHTML = '';
 	_('drag_drop').style.borderColor = '#ccc';
-	_('file_input').value = ''; // Reset input so same file can be re-uploaded
+	_('file_input').value = ''; 
 }
 
 // Helper function to show errors
