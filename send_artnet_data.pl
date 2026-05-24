@@ -128,7 +128,6 @@ while (1) {
 				$artnet_data = $new_artnet_data;
 
 				$cross_fade_state = 'fade_in';
-				$redis->set('progress', '100.0');
 				last;
 			}
 		}
