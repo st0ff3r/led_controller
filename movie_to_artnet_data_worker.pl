@@ -2,14 +2,27 @@
 use strict;
 use Redis;
 use LedController;
+use POSIX qw(SIGTERM SIGINT);
+
+my $should_exit = 0;
+
+# Define the Signal Handler
+$SIG{TERM} = sub { $should_exit = 1; warn "[Worker] SIGTERM received. Shutting down gracefully...\n"; };
+$SIG{INT}  = sub { $should_exit = 1; warn "[Worker] SIGINT received. Shutting down gracefully...\n"; };
 
 my $redis = Redis->new(server => 'redis:6379');
 my $c = LedController->new();
 
-while (1) {
-	my ($queue, $job_file) = $redis->blpop('job_queue', 0);
+# Loop while we should NOT exit
+while (! $should_exit) {
+	# Use a 5-second timeout on blpop to allow periodic checking of $should_exit
+	my $result = $redis->blpop('job_queue', 5);
+	next unless $result;
+
+	my ($queue, $job_file) = @$result;
 	
 	$redis->set('system_locked', '1');
+	# SET TO 50: Upload/Processing started
 	$redis->set('progress', '50.0'); 
 	$redis->publish('progress_channel', '50.0');
 
@@ -21,10 +34,12 @@ while (1) {
 			loop_forth_and_back => 1
 		)) {
 			$c->movie_to_slitscan(slitscan_file => "/var/www/led_controller/images/slitscan.png");
+	
+			# Signal that everything is completely finished and written to disk
 			$redis->set('progress', '-1.0');
 			$redis->publish('progress_channel', '-1.0');
 		} else {
-			die "Conversion failed"; # Trigger catch block
+			die "Conversion failed";
 		}
 	};
 
@@ -34,7 +49,9 @@ while (1) {
 		$redis->publish('progress_channel', '0.0');
 	}
 
-	# Cleanup always happens regardless of success or failure
 	unlink($job_file) if -e $job_file;
+	# Important: Remove system_locked when the job is truly done
 	$redis->del('system_locked');
 }
+
+warn "[Worker] Exited cleanly.\n";
