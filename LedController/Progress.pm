@@ -16,8 +16,9 @@ sub handler {
     $r->headers_out->set('Cache-Control' => 'no-cache');
     $r->rflush();
 
-    # Initial progress
-    my $val = $redis->get('progress') || 0;
+    # Initial progress: This handles the page reload requirement.
+    # The moment the browser connects, it gets the latest status from Redis.
+    my $val = $redis->get('progress') || '0.0';
     $r->print("data: $val\n\n");
     $r->rflush();
 
@@ -26,16 +27,22 @@ sub handler {
         my ($message, $topic) = @_;
         $r->print("data: $message\n\n");
         $r->rflush();
-        # Exit subscription if finished
-        die "DONE" if $message eq '100.0' || $message eq 'DONE';
+        
+        # We no longer die here or delete the key if we want to support 
+        # persistent status check. If you want the stream to close 
+        # upon completion, uncomment the die below:
+        # die "DONE" if $message eq '100.0' || $message eq 'DONE';
     };
 
     eval {
         $subscriber->subscribe('progress_channel', $sub_callback);
+        # Block until subscription receives data
         while (1) { $subscriber->wait_for_messages(10); }
     };
     
-    $redis->del('progress');
+    # REMOVED: $redis->del('progress'); 
+    # Do not delete the key, so reloads can see the final '100.0' or 'Ready' state.
+    
     return Apache2::Const::OK;
 }
 1;
