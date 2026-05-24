@@ -18,16 +18,32 @@ my $redis = Redis->new(server => 'redis:6379');
 
 my $loop = IO::Async::Loop->new;
 
+# Register signal handlers to trigger graceful loop shutdown
+$loop->watch_signal( 'TERM', sub { 
+	warn "[Sunrise] SIGTERM received. Stopping loop...\n"; 
+	$loop->stop; 
+});
+
+$loop->watch_signal( 'INT', sub { 
+	warn "[Sunrise] SIGINT received. Stopping loop...\n"; 
+	$loop->stop; 
+});
+
+# Properly declare and initialize $timer
 my $timer = IO::Async::Timer::Periodic->new(
 	interval => 1,
 	on_tick => \&do_calculation
 );
 
 $timer->start;
- 
 $loop->add($timer);
- 
+
+# Start the event loop
 $loop->run;
+
+# Cleanup after the loop has stopped
+warn "[Sunrise] Loop exited. Cleaning up...\n";
+$redis->quit;
 
 sub do_calculation {
 	my $sunrise_start = DateTime::Event::Sunrise->sunrise(longitude => 12.5683, latitude => 55.6761, altitude => -6);

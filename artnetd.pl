@@ -123,7 +123,8 @@ while (1) {
 	# signal received, wait for fade out and exit
 	if ($should_exit) {
 		if ($exit_countdown-- <= 0) {
-			die "$0 quitting\n";
+			warn "$0 exiting cleanly\n";
+			exit 0;
 		}
 	}
 }

@@ -15,6 +15,10 @@ COPY ./upload.js /var/www/led_controller/
 COPY ./bootstrap.min.css /var/www/led_controller/
 COPY ./bootstrap.min.css.map /var/www/led_controller/
 
+# Add global shutdown configuration
+COPY ./custom-shutdown.conf /etc/apache2/conf-available/
+RUN a2enconf custom-shutdown
+
 # Enable necessary Apache modules
 RUN a2enmod headers
 
@@ -22,8 +26,12 @@ RUN a2enmod headers
 RUN chown -R www-data:www-data /led_controller/data && \
 	chown -R www-data:www-data /var/www/led_controller/images
 
-# Redirect apache error and access logs to stdout and stderr tubes
+# Redirect apache logs to stdout/stderr
 RUN ln -sf /proc/self/fd/1 /var/log/apache2/access.log && \
 	ln -sf /proc/self/fd/2 /var/log/apache2/error.log
 
-CMD ["apachectl", "-D", "FOREGROUND"]
+# Copy and setup entrypoint script
+COPY ./docker-entrypoint_web.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
