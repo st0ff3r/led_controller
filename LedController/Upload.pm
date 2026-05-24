@@ -13,7 +13,12 @@ sub handler {
 	my $r = shift;
 	my $redis = Redis->new(server => 'redis:6379');
 
-	# Check if system is already busy processing an active job loop
+	# 1. Handle HEAD requests: Always return OK so the pre-flight check passes
+	if ($r->method eq 'HEAD') {
+		return Apache2::Const::OK;
+	}
+
+	# 2. Check if system is busy: If locked, return FORBIDDEN for everything else (POST)
 	if ($redis->exists('system_locked')) {
 		return Apache2::Const::FORBIDDEN;
 	}

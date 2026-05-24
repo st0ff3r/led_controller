@@ -128,6 +128,26 @@ _('drag_drop').ondrop = function(event) {
 };
 
 function handleFileUpload(file) {
+	// 1. Client-side Size Check
+	if (file.size > 500 * 1024 * 1024) {
+		showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">File is too large (max 500MB)</div>');
+		return;
+	}
+
+	// 2. Pre-flight check (HEAD request)
+	var check_request = new XMLHttpRequest();
+	check_request.open("HEAD", "upload");
+	check_request.onload = function() {
+		if (check_request.status === 403) {
+			showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">System already running a job</div>');
+		} else {
+			performActualUpload(file);
+		}
+	};
+	check_request.send();
+}
+
+function performActualUpload(file) {
 	var form_data = new FormData();
 	form_data.append("movie_file", file);
 
@@ -144,13 +164,9 @@ function handleFileUpload(file) {
 
 	// Map Upload (0-100% of file) to UI (0-50% of bar)
 	ajax_request.upload.addEventListener('progress', function(event) {
-		if (event.lengthComputable) {
-			// FIXED: Ignore upload rendering if an error display lock is active
-			if (Date.now() < errorDisplayUntil) return;
-
+		if (event.lengthComputable && Date.now() >= errorDisplayUntil) {
 			ensureProgressBarStructure();
-			var upload_ratio = event.loaded / event.total;
-			var bar_percent = Math.round(upload_ratio * 50);
+			var bar_percent = Math.round((event.loaded / event.total) * 50);
 			
 			_('progress_bar_process').style.width = bar_percent + '%';
 			_('progress_bar_process').innerHTML = 'Uploading ' + bar_percent + '%';
@@ -158,8 +174,9 @@ function handleFileUpload(file) {
 	});
 
 	ajax_request.addEventListener('load', function(event) {
-		isUploading = false;
+		isUploading = false; // Reset state flag on load resolution
 
+		// FIXED: Check lock timer status before resolving the request layout mutations
 		if (Date.now() < errorDisplayUntil) return;
 
 		if (ajax_request.status === 413) {
