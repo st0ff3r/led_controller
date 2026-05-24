@@ -100,7 +100,6 @@ sub movie_to_artnet {
 
 		# Slitscan build in memory using SetPixel
 		if ($i < SLITSCAN_IMAGE_MAX_HEIGHT) {
-			# Split frame_buffer (RGB) into individual values
 			my @rgb = unpack('C*', $frame_buffer);
 			for (my $x = 0; $x < $num_pixels; $x++) {
 				my $r = $rgb[$x * 3] / 255;
@@ -112,6 +111,7 @@ sub movie_to_artnet {
 
 		if ($i % 100 == 0) {
 			warn "[LedController] Slitscan build progress: row $i\n";
+		}
 
 		# Update progress every 50 frames
 		if ($i % 50 == 0) {
