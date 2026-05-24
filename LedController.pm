@@ -21,10 +21,6 @@ $| = 1; # Force autoflush
 
 my $config = new Config::Simple(ARTNET_CONF);
 
-my $movie_file;
-my $temp_artnet_data_file;
-my $temp_dir;
-
 sub new {
 	my $class = shift;
 	my %p = @_;
@@ -50,6 +46,9 @@ sub update_progress {
 	
 	# Broadcast to listeners (SSE relay)
 	$self->{redis}->publish('progress_channel', $formatted);
+	
+	# Force flush the Redis socket
+	$self->{redis}->wait_all_responses();
 
 	warn "[LedController] Progress updated to $formatted%\n";
 }
@@ -58,16 +57,20 @@ sub movie_to_artnet {
 	my $self = shift;
 	my %p = @_;
 	
-	$movie_file = $p{movie_file};
+	my $movie_file = $p{movie_file};
 	my $artnet_data_file = $p{artnet_data_file};
 	my $num_pixels = $config->param('num_pixels');
 
 	warn "[LedController] Starting movie conversion: $movie_file\n";
 	$self->update_progress(50.0);
 	
-	# Detect frame rate
-	my $fps = `ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=r_frame_rate $movie_file`;
-	chomp($fps);
+	# Detect frame rate and total frames
+	my $fps_cmd = "ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=r_frame_rate $movie_file";
+	my $fps = `$fps_cmd`; chomp($fps);
+	
+	my $total_frames_cmd = "ffprobe -v error -select_streams v:0 -show_entries stream=nb_frames -of default=nokey=1:noprint_wrappers=1 $movie_file";
+	my $total_frames = `$total_frames_cmd`; chomp($total_frames);
+	$total_frames ||= 1;
 	
 	if (!$fps) { 
 		warn "[LedController] ERROR: Failed to detect FPS\n";
@@ -109,10 +112,18 @@ sub movie_to_artnet {
 
 		if ($i % 100 == 0) {
 			warn "[LedController] Slitscan build progress: row $i\n";
+
+		# Update progress every 50 frames
+		if ($i % 50 == 0) {
+			my $percent = 50.0 + (($i / $total_frames) * 45.0);
+			$self->update_progress($percent);
 		}
 		$i++;
 	}
 	close($pipe);
+	
+	# Validate pipe
+	if ($? != 0) { warn "[LedController] FFmpeg pipe error exit code: $?"; return 0; }
 	
 	# Crop slitscan to actual height used
 	$self->{slitscan_image}->Crop(geometry => "${num_pixels}x$i+0+0");
@@ -131,27 +142,40 @@ sub movie_to_slitscan {
 	my $self = shift;
 	my %p = @_;
 	
+	# Defensive check
+	if (!$self->{slitscan_image} || $self->{slitscan_image}->Get('width') == 0) {
+		warn "[LedController] ERROR: Image object is invalid or empty. Aborting write.\n";
+		return 0;
+	}
+	
 	warn "[LedController] Starting slitscan image creation...\n";
 	
 	# Create temp file
-	my ($fh, $temp_file) = tempfile( DIR => TEMP_DIR, CLEANUP => 0, SUFFIX => '.png');
+	my ($fh, $temp_file) = tempfile( DIR => TEMP_DIR, CLEANUP => 1, SUFFIX => '.png');
 	
 	# Added log before Magick Write
 	warn "[LedController] Writing slitscan image to temp: $temp_file\n";
-	$self->{slitscan_image}->Write($temp_file);
+	my $status = $self->{slitscan_image}->Write($temp_file);
 	close($fh);
 	
-	# Move to final destination
-	warn "[LedController] Moving slitscan to final destination: $p{slitscan_file}\n";
-	move($temp_file, $p{slitscan_file}) || die "Move failed: $!";
+	if ($status) {
+		warn "[LedController] Magick Write Error: $status\n";
+		return 0;
+	}
 	
-	# Clean up temp file immediately after move
-	unlink $temp_file if -e $temp_file;
+	# Validate file size before move
+	if (-s $temp_file > 0) {
+		warn "[LedController] Moving slitscan to final destination: $p{slitscan_file}\n";
+		move($temp_file, $p{slitscan_file}) || die "Move failed: $!";
+		$self->update_progress(100.0);
+		warn "[LedController] Slitscan generation complete (100%)\n";
+		sleep 2;
+	} else {
+		warn "[LedController] ERROR: Generated temp file is 0 bytes, aborting move.\n";
+		return 0;
+	}
 	
-	$self->update_progress(100.0);
-	warn "[LedController] Slitscan generation complete (100%)\n";
-	
-	sleep 2;	
+	return 1;
 }
 
 sub cleanup_temp_files {
