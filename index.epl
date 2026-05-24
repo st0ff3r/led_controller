@@ -39,8 +39,6 @@
 						</a>
 						<input type="file" id="file_input" style="display: none;" accept="video/*">
 					</div>
-					
-					<div id="uploaded_image" class="row mt-2"></div>
 				</div>
 				<div class="col-md-3">&nbsp;</div>
 			</div>

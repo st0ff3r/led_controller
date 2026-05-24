@@ -1,4 +1,6 @@
 var source; // Global variable for EventSource
+var isUploading = false; // Track if the client is actively pushing a file payload
+var errorDisplayUntil = 0; // Timestamp lock to force errors to stay visible
 
 function _(element) {
 	return document.getElementById(element);
@@ -36,14 +38,22 @@ function initProgressTracking() {
 function updateUI(data) {
 	console.log("Status update: " + data);
 	
+	// FIXED: If we are inside the 3-second error display lock, ignore incoming progress updates completely
+	if (Date.now() < errorDisplayUntil) {
+		console.log("[UI Lock] Ignoring server message while error message is displayed.");
+		return;
+	}
+
 	// Fast flags
 	if (data == "0.0") {
-		resetProgressBar();
+		// FIXED: Only hide the progress bar if the user isn't actively uploading a file right now
+		if (!isUploading) {
+			resetProgressBar();
+		}
 		return;
 	} 
 	if (data == "ERROR") {
-		resetProgressBar();
-		showUploadError('<div class="alert alert-danger"><b>server side processing failed</div>');
+		showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">Server side processing failed</div>');
 		return;
 	}
 
@@ -54,14 +64,15 @@ function updateUI(data) {
 	if (numeric_val === -1.0) {
 		console.log("[UI Completing] Sentinel -1.0 encountered. Closing SSE channel.");
 		if (source) {
-			source.close(); // Cut the network connection immediately
+			source.close(); 
 		}
 
+		ensureProgressBarStructure();
 		_('progress_bar').style.display = 'block';
+		_('progress_bar_process').className = 'progress-bar bg-success'; 
 		_('progress_bar_process').style.width = '100%';
 		_('progress_bar_process').innerHTML = 'Ready';
 		
-		// Finalize UI elements cleanly
 		setTimeout(function() {
 			resetProgressBar();
 			_('slitscan').src = 'images/slitscan.png?' + Date.now();
@@ -72,7 +83,9 @@ function updateUI(data) {
 	var percent_completed = Math.round(numeric_val);
 
 	if (percent_completed >= 50) {
+		ensureProgressBarStructure();
 		_('progress_bar').style.display = 'block';
+		_('progress_bar_process').className = 'progress-bar bg-success'; 
 		_('progress_bar_process').style.width = percent_completed + '%';
 		_('progress_bar_process').innerHTML = 'Processing ' + percent_completed + '%';
 	}
@@ -110,7 +123,7 @@ _('drag_drop').ondrop = function(event) {
 	if (drop_files.length <= 1) {
 		handleFileUpload(drop_files[0]);
 	} else {
-		showUploadError('<div class="alert alert-danger"><b>only supports upload of one file</div>');
+		showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">Only supports upload of one file</div>');
 	}
 };
 
@@ -118,8 +131,12 @@ function handleFileUpload(file) {
 	var form_data = new FormData();
 	form_data.append("movie_file", file);
 
-	// FIXED: Force a fresh, clear SSE subscription link to start listening right as the upload initiates
+	// Set upload state flag to stop incoming 0.0 server messages from clearing our bar out
+	isUploading = true;
+
+	// Force a fresh, clear SSE subscription link to start listening right as the upload initiates
 	initProgressTracking();
+	ensureProgressBarStructure();
 
 	_('progress_bar').style.display = 'block';
 	var ajax_request = new XMLHttpRequest();
@@ -128,6 +145,10 @@ function handleFileUpload(file) {
 	// Map Upload (0-100% of file) to UI (0-50% of bar)
 	ajax_request.upload.addEventListener('progress', function(event) {
 		if (event.lengthComputable) {
+			// FIXED: Ignore upload rendering if an error display lock is active
+			if (Date.now() < errorDisplayUntil) return;
+
+			ensureProgressBarStructure();
 			var upload_ratio = event.loaded / event.total;
 			var bar_percent = Math.round(upload_ratio * 50);
 			
@@ -137,31 +158,59 @@ function handleFileUpload(file) {
 	});
 
 	ajax_request.addEventListener('load', function(event) {
+		isUploading = false; // Reset state flag on load resolution
+
+		// FIXED: Check lock timer status before resolving the request layout mutations
+		if (Date.now() < errorDisplayUntil) return;
+
 		if (ajax_request.status >= 400) {
-			showUploadError('<div class="alert alert-danger"><b>already running</div>');
+			showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">System already running a job</div>');
 		} else {
-			// Once finished, the EventSource listener will take over 
-			// for the server-side processing states (50% -> 100%)
-			_('progress_bar_process').innerHTML = 'Processing...';
+			if (_('progress_bar_process')) {
+				_('progress_bar_process').innerHTML = 'Processing...';
+			}
 		}
 	});
 	
 	ajax_request.send(form_data);
 }
 
+// Safety check to rebuild standard bar elements if they were replaced by an error block
+function ensureProgressBarStructure() {
+	if (!_( 'progress_bar_process' )) {
+		_('progress_bar').innerHTML = '<div class="progress-bar bg-success" id="progress_bar_process" role="progressbar" style="width:0%; height:50px;">0%</div>';
+	}
+}
+
 function resetProgressBar() {
 	_('progress_bar').style.display = 'none';
+	ensureProgressBarStructure();
 	_('progress_bar_process').style.width = '0%';
 	_('progress_bar_process').innerHTML = '';
 	_('drag_drop').style.borderColor = '#ccc';
 	_('file_input').value = ''; 
+	isUploading = false;
 }
 
-function showUploadError(errorMessage) {
-	_('uploaded_image').style.display = 'block';
-	_('uploaded_image').innerHTML = errorMessage;
+function showUploadError(errorHtmlBlock) {
+	// FIXED: Lock out updateUI rendering updates for at least 3 seconds
+	errorDisplayUntil = Date.now() + 3000;
+	isUploading = false;
+
+	// Only close the SSE stream if the system isn't already busy processing a job.
+	if (errorHtmlBlock.indexOf("already running") === -1 && errorHtmlBlock.indexOf("System already running") === -1) {
+		if (source) { source.close(); }
+	}
+	
+	// Completely drop internal progress structure and swap with error markup layout
+	_('progress_bar').innerHTML = errorHtmlBlock;
+	_('progress_bar').style.display = 'block';
 	_('drag_drop').style.borderColor = '#ccc';
+	
+	// After 3 seconds, evaluate if we should hide the block or if a live stream has reclaimed it
 	setTimeout(function() {
-		_('uploaded_image').innerHTML = '';
+		if (!_( 'progress_bar_process' )) {
+			resetProgressBar();
+		}
 	}, 3000);
 }
