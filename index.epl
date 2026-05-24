@@ -28,14 +28,16 @@
                     <h4 class="mb-3 text-center">Drag & drop movie file or click image to upload</h4>
                     
                     <div id="drag_drop">
+                        <!-- Progress bar moved to the top -->
+                        <div class="progress mb-3" id="progress_bar" style="display:none; height:50px;">
+                            <div class="progress-bar bg-success" id="progress_bar_process" role="progressbar" style="width:0%; height:50px;">0%</div>
+                        </div>
+
+                        <!-- Image link below the progress bar -->
                         <a id="upload_link" style="cursor: pointer;">
                             <img class="slitscan" id="slitscan" src="images/slitscan.png" alt="Upload">
                         </a>
                         <input type="file" id="file_input" style="display: none;" accept="video/*">
-                        
-                        <div class="progress mt-3" id="progress_bar" style="display:none; height:50px;">
-                            <div class="progress-bar bg-success" id="progress_bar_process" role="progressbar" style="width:0%; height:50px;">0%</div>
-                        </div>
                     </div>
                     
                     <div id="uploaded_image" class="row mt-2"></div>
