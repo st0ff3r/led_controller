@@ -6,11 +6,12 @@ use File::Copy;
 use Image::Magick;
 use Image::Size;
 use Config::Simple;
-use File::Path qw(remove_tree);
+use File::Path qw( make_path remove_tree );
 use Proc::Killall;
 use Redis;
 use Data::Dumper;
 
+use constant TEMP_DIR => '/led_controller/data/tmp';
 use constant ARTNET_CONF => '/led_controller/artnet.conf';
 use constant SLITSCAN_IMAGE_MAX_HEIGHT => 10000;
 use constant REDIS_HOST => 'redis';
@@ -31,6 +32,11 @@ sub new {
 	$self->{session_id} = $p{session_id};
 	$self->{slitscan_image} = new Image::Magick;
 	$self->{redis} = Redis->new(server => REDIS_HOST . ':' . REDIS_PORT) || warn $!;
+	
+	if (! -d TEMP_DIR) {
+		make_path(TEMP_DIR, { mode => 0777 }) or warn "[LedController] Warning: Could not create " . TEMP_DIR . ": $!";
+	}
+
 	bless $self, $class;
 	return($self);
 }
@@ -76,7 +82,7 @@ sub movie_to_artnet {
 	chomp($duration_str);
 	$movie_duration = $duration_str if $duration_str =~ /^\d+(\.\d+)?$/;
 	
-	$temp_dir = tempdir( CLEANUP => 0 );
+	$temp_dir = tempdir( DIR => TEMP_DIR, CLEANUP => 0 );
 	warn "[LedController] Temp dir created: $temp_dir\n";
 
 	my $ffmpeg_vf = "scale=" . $config->param('num_pixels') . ":-2:flags=neighbor,crop=" . $config->param('num_pixels') . ":1:0:";
@@ -104,7 +110,7 @@ sub movie_to_artnet {
 	$self->{slitscan_image}->Set(size=>$config->param('num_pixels') . 'x' . $slitscan_image_height);
 	$self->{slitscan_image}->ReadImage('canvas:white');
 
-	my ($fh_out, $temp_artnet_data_file) = tempfile( CLEANUP => 0 );
+	my ($fh_out, $temp_artnet_data_file) = tempfile( DIR => TEMP_DIR, CLEANUP => 0 );
 	print $fh_out "$fps\n";
 	
 	my $total_frames = scalar(@images);
@@ -174,7 +180,7 @@ sub movie_to_slitscan {
 	warn "[LedController] Starting slitscan image creation...\n";
 	
 	# Create temp file
-	my ($fh, $temp_file) = tempfile( CLEANUP => 0, SUFFIX => '.png');
+	my ($fh, $temp_file) = tempfile( DIR => TEMP_DIR, CLEANUP => 0, SUFFIX => '.png');
 	
 	# Added log before Magick Write
 	warn "[LedController] Writing slitscan image to temp: $temp_file\n";

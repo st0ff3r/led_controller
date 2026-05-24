@@ -19,9 +19,8 @@ services:
     ports:
       - "80:80"
     volumes:
-      - led_data:/images:/var/www/led_controller/images
-      - led_data:/data:/led_controller/data
-      - led_data:/tmp:/tmp
+      - led_data:/led_controller/data
+      - led_data:/var/www/led_controller/images
     depends_on:
       - redis
     environment:
@@ -47,9 +46,8 @@ services:
       dockerfile: Dockerfile.movie_to_artnet_data_worker
     container_name: movie-to-artnet-data-worker
     volumes:
-      - led_data:/images:/var/www/led_controller/images
       - led_data:/led_controller/data
-      - led_data:/tmp:/tmp
+      - led_data:/var/www/led_controller/images
     depends_on:
       - redis
     environment:
@@ -62,6 +60,8 @@ services:
       context: .
       dockerfile: Dockerfile.send_artnet_data
     container_name: led_artnet_sender
+    volumes:
+      - led_data:/led_controller/data
     depends_on:
       - redis
     environment:
