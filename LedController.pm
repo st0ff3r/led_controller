@@ -42,16 +42,16 @@ sub new {
 }
 
 sub update_progress {
-    my ($self, $val) = @_;
-    my $formatted = sprintf("%.1f", $val);
-    
-    # Update standard state for other components
-    $self->{redis}->set('progress', $formatted);
-    
-    # Broadcast to listeners (SSE relay)
-    $self->{redis}->publish('progress_channel', $formatted);
+	my ($self, $val) = @_;
+	my $formatted = sprintf("%.1f", $val);
+	
+	# Update standard state for other components
+	$self->{redis}->set('progress', $formatted);
+	
+	# Broadcast to listeners (SSE relay)
+	$self->{redis}->publish('progress_channel', $formatted);
 
-    warn "[LedController] Progress updated to $formatted%\n";
+	warn "[LedController] Progress updated to $formatted%\n";
 }
 
 sub movie_to_artnet {

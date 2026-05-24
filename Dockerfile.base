@@ -50,14 +50,14 @@ RUN apt-get update && apt-get install -y \
 USER root
 
 # Setup base application directory layouts
-RUN mkdir -p /led_controller/data \
-    && mkdir -p /var/www/led_controller/images \
-    && chown -R www-data:www-data /led_controller \
-    && chown -R www-data:www-data /var/www/led_controller
+RUN mkdir -p /led_controller/data && \
+	mkdir -p /var/www/led_controller/images && \
+	chown -R www-data:www-data /led_controller && \
+	chown -R www-data:www-data /var/www/led_controller
 
 # Install CPAN dependencies
-RUN PERL_MM_USE_DEFAULT=1 cpanm Proc::Killall \
-    && PERL_MM_USE_DEFAULT=1 cpanm IO::Async::Timer::Periodic
+RUN PERL_MM_USE_DEFAULT=1 cpanm Proc::Killall && \
+	PERL_MM_USE_DEFAULT=1 cpanm IO::Async::Timer::Periodic
 
 # Configure Apache module defaults
 RUN a2dismod -f deflate
