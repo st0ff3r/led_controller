@@ -158,12 +158,14 @@ function handleFileUpload(file) {
 	});
 
 	ajax_request.addEventListener('load', function(event) {
-		isUploading = false; // Reset state flag on load resolution
+		isUploading = false;
 
-		// FIXED: Check lock timer status before resolving the request layout mutations
 		if (Date.now() < errorDisplayUntil) return;
 
-		if (ajax_request.status >= 400) {
+		if (ajax_request.status === 413) {
+			// Handle the specific backend size rejection
+			showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">File is too large (Server Rejected)</div>');
+		} else if (ajax_request.status >= 400) {
 			showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">System already running a job</div>');
 		} else {
 			if (_('progress_bar_process')) {

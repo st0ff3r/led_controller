@@ -19,4 +19,8 @@ COPY ./bootstrap.min.css.map /var/www/led_controller/
 RUN chown -R www-data:www-data /led_controller/data && \
 	chown -R www-data:www-data /var/www/led_controller/images
 
+# Redirect apache error and access logs to stdout and stderr tubes
+RUN ln -sf /proc/self/fd/1 /var/log/apache2/access.log && \
+	ln -sf /proc/self/fd/2 /var/log/apache2/error.log
+
 CMD ["apachectl", "-D", "FOREGROUND"]

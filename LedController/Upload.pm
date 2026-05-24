@@ -1,9 +1,9 @@
 package LedController::Upload;
 use strict;
 use Apache2::RequestRec;
-use Apache2::Const;
+use Apache2::Const -compile => qw(OK FORBIDDEN SERVER_ERROR HTTP_REQUEST_ENTITY_TOO_LARGE);
 use File::Copy;
-use File::Temp qw(tempfile); # Core module function
+use File::Temp qw(tempfile);
 use Redis;
 use CGI;
 
@@ -25,6 +25,15 @@ sub handler {
 	my $fh_in = $q->upload('movie_file');
 	
 	if ($fh_in) {
+		# Limit file size to 500MB (524,288,000 bytes)
+		my $max_size = 500 * 1024 * 1024;
+		my $file_size = $q->uploadInfo($fh_in)->{'Content-length'};
+		
+		if ($file_size > $max_size) {
+			$r->log_error("[UploadHandler] File exceeds 500MB limit: $file_size bytes");
+			return Apache2::Const::HTTP_REQUEST_ENTITY_TOO_LARGE;
+		}
+
 		# CGI automatically dumps the pristine video payload to its own hidden local tmp tracking asset
 		my $cgi_tmp_file = $q->tmpFileName($fh_in);
 		
