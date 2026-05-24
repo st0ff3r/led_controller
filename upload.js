@@ -5,54 +5,65 @@ function _(element) {
 }
 
 _('upload_link').onclick = function(event) {
-    _('file_input').click();
+	_('file_input').click();
 };
 
 // Initialize on page load to check for existing status
 window.addEventListener('load', function() {
-    initProgressTracking();
+	initProgressTracking();
 });
 
 function initProgressTracking() {
-    // Open connection immediately to get current status from server
-    source = new EventSource('progress');
+	// Open connection immediately to get current status from server
+	source = new EventSource('progress');
 
-    source.addEventListener('error', function(event) {
-        console.log("SSE Connection closed or error.");
-        source.close();
-    });
+	source.addEventListener('error', function(event) {
+		console.log("SSE Connection closed or error.");
+		source.close();
+	});
 
-    source.addEventListener('message', function(event) {
-        updateUI(event.data);
-    }, false);
+	source.addEventListener('message', function(event) {
+		updateUI(event.data);
+	}, false);
 }
 
 function updateUI(data) {
-    console.log("Status update: " + data);
-    
-    if (data == "50.0") {
-        _('progress_bar').style.display = 'block';
-        _('progress_bar_process').style.width = '50%';
-        _('progress_bar_process').innerHTML = 'Processing...';
-    } 
-    else if (data == "100.0") {
-        _('progress_bar').style.display = 'block';
-        _('progress_bar_process').style.width = '100%';
-        _('progress_bar_process').innerHTML = 'Ready';
-        
-        // Finalize UI
-        setTimeout(function() {
-            resetProgressBar();
-            _('slitscan').src = 'images/slitscan.png?' + Date.now();
-        }, 1500);
-    } 
-    else if (data == "0.0") {
-        resetProgressBar();
-    } 
-    else if (data == "ERROR") {
-        resetProgressBar();
-        showUploadError('<div class="alert alert-danger"><b>server side processing failed</div>');
-    }
+	console.log("Status update: " + data);
+	
+	// Fast flags
+	if (data == "0.0") {
+		resetProgressBar();
+		return;
+	} 
+	if (data == "ERROR") {
+		resetProgressBar();
+		showUploadError('<div class="alert alert-danger"><b>server side processing failed</div>');
+		return;
+	}
+
+	// Parse numeric value safely for floating point updates
+	var numeric_val = parseFloat(data);
+	if (isNaN(numeric_val)) return;
+
+	var percent_completed = Math.round(numeric_val);
+
+	if (percent_completed >= 100) {
+		_('progress_bar').style.display = 'block';
+		_('progress_bar_process').style.width = '100%';
+		_('progress_bar_process').innerHTML = 'Ready';
+		
+		// Finalize UI
+		setTimeout(function() {
+			resetProgressBar();
+			_('slitscan').src = 'images/slitscan.png?' + Date.now();
+		}, 1500);
+	} 
+	else if (percent_completed >= 50) {
+		// FIXED: Tracks intermediate processing milestones (50% -> 99%) dynamically
+		_('progress_bar').style.display = 'block';
+		_('progress_bar_process').style.width = percent_completed + '%';
+		_('progress_bar_process').innerHTML = 'Processing ' + percent_completed + '%';
+	}
 }
 
 // Trigger hidden file input
@@ -92,37 +103,35 @@ _('drag_drop').ondrop = function(event) {
 };
 
 function handleFileUpload(file) {
-    var form_data = new FormData();
-    form_data.append("movie_file", file);
+	var form_data = new FormData();
+	form_data.append("movie_file", file);
 
-    _('progress_bar').style.display = 'block';
-    var ajax_request = new XMLHttpRequest();
-    ajax_request.open("post", "upload");
+	_('progress_bar').style.display = 'block';
+	var ajax_request = new XMLHttpRequest();
+	ajax_request.open("post", "upload");
 
-    // --- NEW: Map Upload (0-100% of file) to UI (0-50% of bar) ---
-    ajax_request.upload.addEventListener('progress', function(event) {
-        if (event.lengthComputable) {
-            // Calculate progress (0 to 1)
-            var upload_ratio = event.loaded / event.total;
-            // Map to 0-50% of the visual progress bar
-            var bar_percent = Math.round(upload_ratio * 50);
-            
-            _('progress_bar_process').style.width = bar_percent + '%';
-            _('progress_bar_process').innerHTML = 'Uploading ' + bar_percent + '%';
-        }
-    });
+	// Map Upload (0-100% of file) to UI (0-50% of bar)
+	ajax_request.upload.addEventListener('progress', function(event) {
+		if (event.lengthComputable) {
+			var upload_ratio = event.loaded / event.total;
+			var bar_percent = Math.round(upload_ratio * 50);
+			
+			_('progress_bar_process').style.width = bar_percent + '%';
+			_('progress_bar_process').innerHTML = 'Uploading ' + bar_percent + '%';
+		}
+	});
 
-    ajax_request.addEventListener('load', function(event) {
-        if (ajax_request.status >= 400) {
-            showUploadError('<div class="alert alert-danger"><b>already running</div>');
-        } else {
-            // Once finished, the EventSource listener will take over 
-            // for the server-side processing states (50% -> 100%)
-            _('progress_bar_process').innerHTML = 'Processing...';
-        }
-    });
-    
-    ajax_request.send(form_data);
+	ajax_request.addEventListener('load', function(event) {
+		if (ajax_request.status >= 400) {
+			showUploadError('<div class="alert alert-danger"><b>already running</div>');
+		} else {
+			// Once finished, the EventSource listener will take over 
+			// for the server-side processing states (50% -> 100%)
+			_('progress_bar_process').innerHTML = 'Processing...';
+		}
+	});
+	
+	ajax_request.send(form_data);
 }
 
 function resetProgressBar() {
