@@ -15,7 +15,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
-    container_name: led_web
+    container_name: web
     ports:
       - "80:80"
     volumes:
@@ -32,7 +32,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.sun_tracker
-    container_name: led_sun_tracker
+    container_name: sun-tracker
     depends_on:
       - redis
     environment:
@@ -55,11 +55,11 @@ services:
     restart: unless-stopped
 
   # 4. Artnet Live Sender Service
-  artnet-sender:
+  send-artnet-data:
     build:
       context: .
       dockerfile: Dockerfile.send_artnet_data
-    container_name: led_artnet_sender
+    container_name: send_artnet_data
     volumes:
       - led_data:/led_controller/data
     depends_on:
@@ -69,11 +69,11 @@ services:
     restart: unless-stopped
 
   # 5. Artnet Daemon Context (Exposes UDP Port 6454)
-  artnet-daemon:
+  artnetd:
     build:
       context: .
       dockerfile: Dockerfile.artnetd
-    container_name: led_artnet_daemon
+    container_name: artnetd
     ports:
       - "6454:6454/udp"
     depends_on:
@@ -87,7 +87,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.artnet_listener
-    container_name: led_artnet_listener
+    container_name: artnet-listener
     depends_on:
       - redis
     environment:
@@ -98,7 +98,7 @@ services:
   redis:
     # Kept at 7.4 to avoid instruction-set issues on Raspberry Pi
     image: redis:7.4-alpine
-    container_name: led_redis
+    container_name: redis
     restart: unless-stopped
 
 volumes:
