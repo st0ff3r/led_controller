@@ -1,12 +1,12 @@
 package LedController;
 
 use strict;
-use File::Temp qw( tempfile tempdir );
+use File::Temp qw(tempfile tempdir);
 use File::Copy;
 use Image::Magick;
 use Image::Size;
 use Config::Simple;
-use File::Path qw( make_path remove_tree );
+use File::Path qw(make_path remove_tree);
 use Proc::Killall;
 use Redis;
 use Data::Dumper;
@@ -60,117 +60,67 @@ sub movie_to_artnet {
 	
 	$movie_file = $p{movie_file};
 	my $artnet_data_file = $p{artnet_data_file};
-	my $loop_forth_and_back = $p{loop_forth_and_back} || undef;
+	my $num_pixels = $config->param('num_pixels');
 
 	warn "[LedController] Starting movie conversion: $movie_file\n";
 	$self->update_progress(50.0);
 	
 	# Detect frame rate
-	my $fps_str;
-	if (open(my $fh, "-|", "ffprobe", "-v", "error", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", $movie_file)) {
-		$fps_str = <$fh>;
-		close($fh);
-	}
-
-	my $fps;
-	if (defined $fps_str && $fps_str =~ /^(\d+\/\d+|\d+(\.\d+)?)$/) { $fps = $1; }
+	my $fps = `ffprobe -v error -select_streams v -of default=noprint_wrappers=1:nokey=1 -show_entries stream=r_frame_rate $movie_file`;
+	chomp($fps);
+	
 	if (!$fps) { 
 		warn "[LedController] ERROR: Failed to detect FPS\n";
 		$self->{redis}->set('progress', '-1'); 
 		return 0; 
 	}
 	
-	# Get duration for progress calculation
-	my $movie_duration = 0;
-	my $duration_str = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $movie_file`;
-	chomp($duration_str);
-	$movie_duration = $duration_str if $duration_str =~ /^\d+(\.\d+)?$/;
-	
-	$temp_dir = tempdir( DIR => TEMP_DIR, CLEANUP => 0 );
-	warn "[LedController] Temp dir created: $temp_dir\n";
-
-	my $ffmpeg_vf = "scale=" . $config->param('num_pixels') . ":-2:flags=neighbor,crop=" . $config->param('num_pixels') . ":1:0:";
-	
-	# Execute ffmpeg extraction
-	open(FFMPEG, "-|", "ffmpeg", "-i", $movie_file, "-progress", "-", "-vf", $ffmpeg_vf, "-r", $fps, "$temp_dir/%08d.png");
-	while (<FFMPEG>) {
-		if (/out_time=(\d{2}):(\d{2}):(\d{2})(\.\d+)/) {
-			my $movie_converted = $1 * 3600 + $2 * 60 + $3 + $4;
-			if ($movie_duration > 0) {
-				$self->update_progress(50.0 + (($movie_converted / $movie_duration) * 25.0));
-			}
-		}
-	}
-	close(FFMPEG);
-	
-	opendir(DIR, $temp_dir) || die "can't opendir $temp_dir: $!";
-	my @images = sort { $a cmp $b } grep { -f "$temp_dir/$_" } readdir(DIR);
-	closedir DIR;
-	warn "[LedController] Extracted " . scalar(@images) . " frames\n";
-
-	$self->update_progress(75.0);
-	
-	my $slitscan_image_height = scalar(@images) > SLITSCAN_IMAGE_MAX_HEIGHT ? SLITSCAN_IMAGE_MAX_HEIGHT : scalar(@images);
-	$self->{slitscan_image}->Set(size=>$config->param('num_pixels') . 'x' . $slitscan_image_height);
+	# Initialize Slitscan canvas in memory
+	$self->{slitscan_image}->Set(size => "${num_pixels}x" . SLITSCAN_IMAGE_MAX_HEIGHT, depth => 8);
 	$self->{slitscan_image}->ReadImage('canvas:white');
 
-	my ($fh_out, $temp_artnet_data_file) = tempfile( DIR => TEMP_DIR, CLEANUP => 0 );
+	# Execute ffmpeg pipe
+	my $cmd = "ffmpeg -i $movie_file -vf scale=$num_pixels:1:flags=neighbor -f rawvideo -pix_fmt rgb24 -";
+	open(my $pipe, "-|", $cmd) or die "Pipe failed: $!";
+
+	my ($fh_out, $temp_artnet_data_file) = tempfile( DIR => TEMP_DIR, UNLINK => 0 );
 	print $fh_out "$fps\n";
 	
-	my $total_frames = scalar(@images);
-	my $total_steps = $total_frames + ($loop_forth_and_back ? $total_frames - 2 : 0);
-	my $update_threshold = int($total_steps / 50) || 1;
-	my $step_counter = 0;
-	my $progress_inc = $total_steps > 0 ? (25.0 / $total_steps) : 0;
-	
-	warn "[LedController] Starting slitscan image build (height: $slitscan_image_height)\n";
-	
+	my $row_size = $num_pixels * 3;
 	my $i = 0;
-	# Process frames to ArtNet
-	foreach (@images) {
-		my $p = new Image::Magick;
-		$p->Read("$temp_dir/$_");
-		my ($w, $h) = $p->Get('width', 'height');
-		for my $x (0..$w-1) {
-			my ($red, $green, $blue) = $p->GetPixel(x => $x, y => int($h / 2));
-			print $fh_out sprintf("%02x%02x%02x", int($red * 255), int($green * 255), int($blue * 255));
-			$self->{slitscan_image}->SetPixel(x => $x, y => $i, color => [$red, $green, $blue]) if $i < $slitscan_image_height;
+	
+	warn "[LedController] Starting streaming slitscan build\n";
+	
+	while (read($pipe, my $frame_buffer, $row_size)) {
+		# ArtNet Output
+		print $fh_out unpack('H*', $frame_buffer) . "\n";
+
+		# Slitscan build in memory using SetPixel
+		if ($i < SLITSCAN_IMAGE_MAX_HEIGHT) {
+			# Split frame_buffer (RGB) into individual values
+			my @rgb = unpack('C*', $frame_buffer);
+			for (my $x = 0; $x < $num_pixels; $x++) {
+				my $r = $rgb[$x * 3] / 255;
+				my $g = $rgb[$x * 3 + 1] / 255;
+				my $b = $rgb[$x * 3 + 2] / 255;
+				$self->{slitscan_image}->SetPixel(x => $x, y => $i, color => [$r, $g, $b]);
+			}
 		}
-		print $fh_out "\n";
-		
+
 		if ($i % 100 == 0) {
-			warn "[LedController] Slitscan build progress: frame $i/$total_frames\n";
+			warn "[LedController] Slitscan build progress: row $i\n";
 		}
-		
-		if ($step_counter % $update_threshold == 0) {
-			$self->update_progress(75.0 + ($step_counter * $progress_inc));
-		}
-		$step_counter++;
 		$i++;
 	}
+	close($pipe);
 	
-	if ($loop_forth_and_back && scalar(@images) >= 3) {
-		foreach (reverse @images[1..$#images-1]) {
-			my $p = new Image::Magick;
-			$p->Read("$temp_dir/$_");
-			my ($w, $h) = $p->Get('width', 'height');
-			for my $x (0..$w-1) {
-				my ($red, $green, $blue) = $p->GetPixel(x => $x, y => int($h / 2));
-				print $fh_out sprintf("%02x%02x%02x", int($red * 255), int($green * 255), int($blue * 255));
-			}
-			print $fh_out "\n";
-			
-			if ($step_counter % $update_threshold == 0) {
-				$self->update_progress(75.0 + ($step_counter * $progress_inc));
-			}
-			$step_counter++;
-		}
-	}
+	# Crop slitscan to actual height used
+	$self->{slitscan_image}->Crop(geometry => "${num_pixels}x$i+0+0");
+	
 	warn "[LedController] Slitscan image build finished.\n";
 	
 	close($fh_out);
 	move($temp_artnet_data_file, $artnet_data_file) || die $!;
-	remove_tree($temp_dir);
 	
 	warn "[LedController] Triggering Redis update for send_artnet_data\n";
 	$self->{redis}->set('trigger_new_data', '1');
@@ -190,8 +140,6 @@ sub movie_to_slitscan {
 	warn "[LedController] Writing slitscan image to temp: $temp_file\n";
 	$self->{slitscan_image}->Write($temp_file);
 	close($fh);
-	
-	$self->{slitscan_image} = Image::Magick->new;
 	
 	# Move to final destination
 	warn "[LedController] Moving slitscan to final destination: $p{slitscan_file}\n";
