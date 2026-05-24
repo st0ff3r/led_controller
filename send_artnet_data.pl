@@ -13,18 +13,19 @@ use constant ARTNET_CONF => '/led_controller/artnet.conf';
 $| = 1; # Force autoflush
 
 my $config = new Config::Simple(ARTNET_CONF);
-# $redis is used for all standard GET/SET/PUBLISH commands
+# Connection 1: For all standard DB commands (GET/SET)
 my $redis = Redis->new(server => 'redis:6379');
-# $subscriber is used ONLY for SUBSCRIBE and poll()
+# Connection 2: ONLY for subscription listening
 my $subscriber = Redis->new(server => 'redis:6379');
 
 # Define intensity variables
 my $intensity = $redis->get('intensity') || 0.0;
 my $intensity_artnet = $redis->get('intensity_artnet') || 0.0;
 
-# Subscribe to intensity updates with callback
+# Subscribe to intensity updates on the dedicated subscriber connection
 $subscriber->subscribe('intensity_update', sub {
 	my ($message, $topic, $subscribed_topic) = @_;
+	# Perform standard GETs using the non-subscriber connection
 	$intensity = $redis->get('intensity');
 	$intensity_artnet = $redis->get('intensity_artnet');
 });
@@ -83,8 +84,9 @@ my ($red, $green, $blue);
 
 while (1) {
 	foreach (split("\n", $artnet_data)) {
-		# Process Redis Pub/Sub messages non-blockingly using poll()
-		$subscriber->poll();
+		# Process Redis Pub/Sub messages non-blockingly
+		# 0 timeout means "check and return immediately"
+		$subscriber->wait_for_messages(0);
 
 		# Check for Redis trigger to load new data
 		if (($redis->get('trigger_new_data') || '0') eq '1') {
