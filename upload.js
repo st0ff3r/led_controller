@@ -41,25 +41,30 @@ function updateUI(data) {
 		return;
 	}
 
-	// Parse numeric value safely for floating point updates
 	var numeric_val = parseFloat(data);
 	if (isNaN(numeric_val)) return;
 
-	var percent_completed = Math.round(numeric_val);
+	// Catch the sentinel value -1.0 to handle the completion state
+	if (numeric_val === -1.0) {
+		if (source) {
+			source.close(); // Cut the network connection immediately
+		}
 
-	if (percent_completed >= 100) {
 		_('progress_bar').style.display = 'block';
 		_('progress_bar_process').style.width = '100%';
 		_('progress_bar_process').innerHTML = 'Ready';
 		
-		// Finalize UI
+		// Finalize UI elements cleanly
 		setTimeout(function() {
 			resetProgressBar();
 			_('slitscan').src = 'images/slitscan.png?' + Date.now();
 		}, 1500);
-	} 
-	else if (percent_completed >= 50) {
-		// FIXED: Tracks intermediate processing milestones (50% -> 99%) dynamically
+		return;
+	}
+
+	var percent_completed = Math.round(numeric_val);
+
+	if (percent_completed >= 50) {
 		_('progress_bar').style.display = 'block';
 		_('progress_bar_process').style.width = percent_completed + '%';
 		_('progress_bar_process').innerHTML = 'Processing ' + percent_completed + '%';

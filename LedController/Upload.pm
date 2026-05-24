@@ -28,7 +28,7 @@ sub handler {
 		# CGI automatically dumps the pristine video payload to its own hidden local tmp tracking asset
 		my $cgi_tmp_file = $q->tmpFileName($fh_in);
 		
-		# FIXED: Generate a clean, unique file path directly using File::Temp's native syntax safely
+		# Generate a clean, unique file path directly using File::Temp's native syntax safely
 		my ($fh_temp, $filename) = tempfile(DIR => TARGET_TMP_DIR, SUFFIX => '.mov', UNLINK => 0);
 		close($fh_temp); # Close the handle immediately so we can overwrite it via move()
 		

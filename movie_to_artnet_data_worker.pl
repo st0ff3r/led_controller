@@ -21,17 +21,15 @@ while (1) {
 		loop_forth_and_back => 1
 	)) {
 		$c->movie_to_slitscan(slitscan_file => "/var/www/led_controller/images/slitscan.png");
-		
-		# SET TO 100: Processed and ready for artnet sender
-		$redis->set('progress', '100.0');
-		$redis->publish('progress_channel', '100.0');
+	
+		# Signal that everything is completely finished and written to disk
+		$redis->set('progress', '-1.0');
+		$redis->publish('progress_channel', '-1.0');
 	} else {
-		# ABORTED/FAILED: Reset
 		$redis->set('progress', '0.0');
 		$redis->publish('progress_channel', '0.0');
 	}
 
-	$c->cleanup_temp_files();
 	unlink($job_file);
 	# Important: Remove system_locked when the job is truly done
 	$redis->del('system_locked');
