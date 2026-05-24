@@ -1,45 +1,41 @@
+package LedController::Progress;
+use strict;
+use Apache2::RequestRec;
+use Apache2::RequestIO;
+use Apache2::Const -compile => qw(OK);
+use Redis;
+
 sub handler {
     my $r = shift;
-    
-    # 1. Connection for polling/getting initial state
-    my $redis_getter = Redis->new(server => 'redis:6379');
-    
+    # 1. Connection for getting current state
+    my $redis = Redis->new(server => 'redis:6379');
     # 2. Connection dedicated to Subscribing
-    my $redis_sub = Redis->new(server => 'redis:6379');
+    my $subscriber = Redis->new(server => 'redis:6379');
     
     $r->content_type('text/event-stream');
     $r->headers_out->set('Cache-Control' => 'no-cache');
     $r->rflush();
 
-    # Get current state first so the UI isn't empty if nothing is happening
-    my $initial_val = $redis_getter->get('progress') || 0;
-    $r->print("data: $initial_val\n\n");
+    # Initial progress
+    my $val = $redis->get('progress') || 0;
+    $r->print("data: $val\n\n");
     $r->rflush();
 
-    # Define the callback that executes when a message arrives
+    # Callback to relay messages
     my $sub_callback = sub {
-        my ($message, $topic, $subscribed_topic) = @_;
+        my ($message, $topic) = @_;
         $r->print("data: $message\n\n");
         $r->rflush();
-        
-        # Close connection/loop if task is finished
-        if ($message eq '100.0' || $message eq 'DONE') {
-            # Use 'die' or a flag to break the listen loop
-            die "DONE"; 
-        }
+        # Exit subscription if finished
+        die "DONE" if $message eq '100.0' || $message eq 'DONE';
     };
 
-    # Enter subscription mode
     eval {
-        $redis_sub->subscribe('progress_channel', $sub_callback);
-        # This blocks until we 'die' inside the callback
-        while (1) {
-            $redis_sub->wait_for_messages(10); 
-        }
+        $subscriber->subscribe('progress_channel', $sub_callback);
+        while (1) { $subscriber->wait_for_messages(10); }
     };
     
-    # Cleanup
-    $redis_getter->del('system_locked', 'progress');
-    
+    $redis->del('progress');
     return Apache2::Const::OK;
 }
+1;
