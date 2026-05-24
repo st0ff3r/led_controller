@@ -82,7 +82,7 @@ my ($red, $green, $blue);
 while (1) {
 	foreach (split("\n", $artnet_data)) {
 		# Process Redis Pub/Sub messages
-		$subscriber->$subscriber->check_messages();
+		$subscriber->check_messages();
 
 		# Check for Redis trigger to load new data
 		if (($redis->get('trigger_new_data') || '0') eq '1') {
