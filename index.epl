@@ -35,7 +35,7 @@
 
 						<!-- Image link below the progress bar -->
 						<a id="upload_link" style="cursor: pointer;">
-							<img class="slitscan" id="slitscan" src="images/slitscan.png" alt="Upload">
+							<img class="slitscan" id="slitscan" src="images/slitscan.png?" alt="Upload">
 						</a>
 						<input type="file" id="file_input" style="display: none;" accept="video/*">
 					</div>
