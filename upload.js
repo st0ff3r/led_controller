@@ -88,20 +88,37 @@ _('drag_drop').ondrop = function(event) {
 };
 
 function handleFileUpload(file) {
-	var form_data = new FormData();
-	form_data.append("movie_file", file);
+    var form_data = new FormData();
+    form_data.append("movie_file", file);
 
-	_('progress_bar').style.display = 'block';
-	var ajax_request = new XMLHttpRequest();
-	ajax_request.open("post", "upload");
+    _('progress_bar').style.display = 'block';
+    var ajax_request = new XMLHttpRequest();
+    ajax_request.open("post", "upload");
 
-	ajax_request.addEventListener('load', function(event) {
-		if (ajax_request.status >= 400) {
-			showUploadError('<div class="alert alert-danger"><b>already running</div>');
-		}
-	});
-	
-	ajax_request.send(form_data);
+    // --- NEW: Map Upload (0-100% of file) to UI (0-50% of bar) ---
+    ajax_request.upload.addEventListener('progress', function(event) {
+        if (event.lengthComputable) {
+            // Calculate progress (0 to 1)
+            var upload_ratio = event.loaded / event.total;
+            // Map to 0-50% of the visual progress bar
+            var bar_percent = Math.round(upload_ratio * 50);
+            
+            _('progress_bar_process').style.width = bar_percent + '%';
+            _('progress_bar_process').innerHTML = 'Uploading ' + bar_percent + '%';
+        }
+    });
+
+    ajax_request.addEventListener('load', function(event) {
+        if (ajax_request.status >= 400) {
+            showUploadError('<div class="alert alert-danger"><b>already running</div>');
+        } else {
+            // Once finished, the EventSource listener will take over 
+            // for the server-side processing states (50% -> 100%)
+            _('progress_bar_process').innerHTML = 'Processing...';
+        }
+    });
+    
+    ajax_request.send(form_data);
 }
 
 function resetProgressBar() {
