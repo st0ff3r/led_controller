@@ -4,6 +4,10 @@ function _(element) {
 	return document.getElementById(element);
 }
 
+_('upload_link').onclick = function(event) {
+    _('file_input').click();
+};
+
 // Initialize on page load to check for existing status
 window.addEventListener('load', function() {
     initProgressTracking();
