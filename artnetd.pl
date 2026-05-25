@@ -4,18 +4,14 @@ use strict;
 use Config::Simple;
 use Time::HiRes qw(usleep gettimeofday tv_interval);
 use Redis;
-use Storable qw(freeze thaw);
+use Storable qw(thaw);
 use IO::Socket::INET;
-use Data::Dumper;
 
 use constant REDIS_HOST => 'redis';
 use constant REDIS_PORT => '6379';
-use constant REDIS_QUEUE_1_NAME => 'artnet_1';
-use constant REDIS_QUEUE_2_NAME => 'artnet_2';
-
+use constant REDIS_QUEUE_1_NAME => 'artnet_1:queue';
+use constant REDIS_QUEUE_2_NAME => 'artnet_2:queue';
 use constant ARTNET_CONF => 'artnet.conf';
-
-use constant PID_I => 1000;
 
 my $config = new Config::Simple(ARTNET_CONF);
 
@@ -27,105 +23,73 @@ my $redis = Redis->new(
 
 my $timeout = 86400;
 
-my @stats = ();
-my $fps_adjustment = 0;
-my $avg_fps;
-my $fps = 0;
-my $last_fps = 0;
+# Set up defaults
+my $fps = $redis->get('fps') || 60; 
+my $target_interval = 1.0 / $fps; # Target frame time in seconds (e.g., 0.016666 for 60fps)
 
 my $should_exit = 0;
-
-# print fps stats
-$SIG{HUP} = sub { 
-	if (@stats >= $fps) {
-		print "avg_fps: $avg_fps\n";
-#		print "fps_adjustment: $fps_adjustment\n";
-		print 'PID_I * ($avg_fps - $fps)' . "\n";
-		print PID_I . ' * ' . '(' . $avg_fps . ' - ' . $fps . ')' . ' = ' . $fps_adjustment . "\n\n";
-	}
-	else {
-		print "cant calculate stats yet\n";
-	}
-};
-
 $SIG{TERM} = sub { print "$0 received SIGTERM\n"; $should_exit = 1 };
 $SIG{KILL} = sub { print "$0 received SIGKILL\n"; $should_exit = 1 };
-my $exit_countdown = $fps * $config->param('cross_fade_time') || 2;
+my $exit_countdown = $fps * ($config->param('cross_fade_time') || 2);
 
 # flush after every write
 $| = 1;
 
-# network connection
-my $socket = new IO::Socket::INET (
-	PeerAddr	=> $config->param('peer_addr') . ":6454",
-	Proto		=> 'udp'
+my $socket = IO::Socket::INET->new(
+	PeerAddr => $config->param('peer_addr') . ":6454",
+	Proto    => 'udp'
 ) || die "ERROR in socket creation : $!\n";
 
+# Timekeeping variables
+my $last_frame_time = [gettimeofday];
+my $last_fps_check = time();
+
 while (1) {
-	my $time = [gettimeofday];
-	my ($queue, $job_id);
-
-	($queue, $job_id) = $redis->blpop(join(':', REDIS_QUEUE_1_NAME, 'queue'), $timeout);
-	if ($job_id) {
+	my $now = [gettimeofday];
 	
-		my %data = $redis->hgetall($job_id);
-		my $frame = thaw($data{message});
-		foreach (@$frame) {
-			$socket->send($_);
+	# 1. EXACT TIMING CHECK: Has enough time passed to process the next frame?
+	my $elapsed = tv_interval($last_frame_time, $now);
+	
+	if ($elapsed >= $target_interval) {
+		# Update frame time anchor point
+		$last_frame_time = $now;
+
+		# 2. NON-BLOCKING FETCH: Grab the latest jobs instantly
+		# We look at queue 1, then queue 2 immediately
+		foreach my $queue (REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME) {
+			my $job_id = $redis->lpop($queue); # Non-blocking LPOP
+			if ($job_id) {
+				my %data = $redis->hgetall($job_id);
+				if ($data{message}) {
+					my $frame = thaw($data{message});
+					foreach (@$frame) {
+						$socket->send($_); # Immediate UDP broadcast
+					}
+				}
+				$redis->del($job_id);
+			}
 		}
 
-		# remove data for job
-		$redis->del($job_id);
-	}
-	# for the mirrored data
-	($queue, $job_id) = $redis->blpop(join(':', REDIS_QUEUE_2_NAME, 'queue'), $timeout);
-	if ($job_id) {
-	
-		my %data = $redis->hgetall($job_id);
-		my $frame = thaw($data{message});
-		foreach (@$frame) {
-			$socket->send($_);
+		# 3. ONCE-PER-SECOND TASKS (Housekeeping)
+		if (time() - $last_fps_check >= 1) {
+			my $new_fps = $redis->get('fps') || 60;
+			if ($new_fps != $fps) {
+				$fps = $new_fps;
+				$target_interval = 1.0 / $fps;
+				print "Framerate updated smoothly to: $fps FPS\n";
+			}
+			$last_fps_check = time();
 		}
 
-		# remove data for job
-		$redis->del($job_id);
-	}
-	
-	$fps = $redis->get('fps');
-	# Only check FPS from Redis once per second
-	my $last_fps_check_time = 0;
-	if (time() > $last_fps_check_time) {
-		$fps = $redis->get('fps');
-		if ($fps != $last_fps) {
-			print "frame rate changed: " . $fps . "\n";
-			@stats = ();
-			$fps_adjustment = 0;
-		}
-		$last_fps = $fps;
-		$last_fps_check_time = time();
-	}
-
-	# update fps stats
-	if (@stats > $fps * 60) {	# a time window of a minute for stats
-		shift @stats;
-	}
-	push @stats, $time;
-	
-	# adjust fps (proportionally - debug: should we do I and D too?)
-	if (@stats >= $fps) {
-		$avg_fps = @stats / tv_interval($stats[0], $stats[-1]);
-		$fps_adjustment = PID_I * ($avg_fps - $fps);
-	}
-
-	my $usleep_time = 1000_000 * ((1 / $fps) - tv_interval($time)) + $fps_adjustment;
-	usleep($usleep_time >= 0 ? $usleep_time : 0);
-	
-	# signal received, wait for fade out and exit
-	if ($should_exit) {
-		if ($exit_countdown-- <= 0) {
+		# Handle clean exit sequence
+		if ($should_exit && $exit_countdown-- <= 0) {
 			warn "$0 exiting cleanly\n";
 			exit 0;
 		}
+	} else {
+		# 4. CPU PROTECTOR: We are too early for the next frame.
+		# Sleep for a tiny fraction of a millisecond (100-200 microseconds).
+		# This gives the CPU core a breather without causing us to miss our frame window.
+		usleep(200); 
 	}
 }
-
