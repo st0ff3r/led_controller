@@ -25,21 +25,29 @@ while (! $should_exit) {
 	# SET TO 50: Upload/Processing started
 	$redis->set('progress', '50.0'); 
 	$redis->publish('progress_channel', '50.0');
-
-	# Wrap job in eval to catch crashes and ensure system_locked is cleared
+	# Wrap job in eval to catch crashes
 	eval {
-		if ($c->movie_to_artnet(
+		warn "[Worker] Running ArtNet Conversion...\n";
+		my $artnet_ok = $c->movie_to_artnet(
 			movie_file => $job_file, 
-			artnet_data_file => "/led_controller/data/artnet.data", 
+			artnet_data_file => "/led_controller/data/artnet.data",
 			loop_forth_and_back => 1
-		)) {
-			$c->movie_to_slitscan(slitscan_file => "/var/www/led_controller/images/slitscan.png");
-	
+		);
+
+		warn "[Worker] Running Slitscan Generation...\n";
+		my $slitscan_ok = $c->movie_to_slitscan(
+			slitscan_file => "/var/www/led_controller/images/slitscan.png"
+		);
+
+		if ($artnet_ok && $slitscan_ok) {
 			# Signal that everything is completely finished and written to disk
 			$redis->set('progress', '-1.0');
 			$redis->publish('progress_channel', '-1.0');
+			warn "[Worker] Job finished successfully.\n";
 		} else {
-			die "Conversion failed";
+			warn "[Worker] A process failed, but moving to next job...\n";
+			$redis->set('progress', '0.0');
+			$redis->publish('progress_channel', '0.0');
 		}
 	};
 
