@@ -36,6 +36,7 @@ while (! $should_exit) {
 
 		warn "[Worker] Running Slitscan Generation...\n";
 		my $slitscan_ok = $c->movie_to_slitscan(
+			movie_file => $job_file, 
 			slitscan_file => "/var/www/led_controller/images/slitscan.png"
 		);
 
