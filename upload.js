@@ -148,6 +148,9 @@ function handleFileUpload(file) {
 }
 
 function performActualUpload(file) {
+	// Smooth scroll to top IMMEDIATELY before the progress bar initiates or drops in
+	window.scrollTo({ top: 0, behavior: 'smooth' });
+
 	var form_data = new FormData();
 	form_data.append("movie_file", file);
 
@@ -225,6 +228,9 @@ function showUploadError(errorHtmlBlock) {
 	_('progress_bar').innerHTML = errorHtmlBlock;
 	_('progress_bar').style.display = 'block';
 	_('drag_drop').style.borderColor = '#ccc';
+	
+	// Smooth scroll to top so errors are instantly visible if the page layout stretched down
+	window.scrollTo({ top: 0, behavior: 'smooth' });
 	
 	// After 3 seconds, evaluate if we should hide the block or if a live stream has reclaimed it
 	setTimeout(function() {
