@@ -4,7 +4,6 @@ use strict;
 use Time::HiRes qw(usleep gettimeofday tv_interval);
 use POSIX qw( ceil );
 use Redis;
-use Storable qw(freeze thaw);
 use Data::Dumper;
 use Data::HexDump;
 
@@ -129,48 +128,49 @@ sub send_artnet {
 	my %p = @_;
 
 	my $packet;
-	my $frame;
+	my @frame_packets;
 	
 	# send mirrored data to first port
 	if ($self->{is_mirrored_on_first_port}) {
-		$frame = [];
+		@frame_packets = ();
 		for (1..$self->{num_universes}) {
 			$packet = "Art-Net\x00\x00\x50\x00\x0e\x00\x00" . chr($_ - 1) . "\x00" . chr(2) . chr(0) . $self->{dmx_channels_mirrored}[$_ - 1];
-			push @$frame, $packet;
+			push @frame_packets, $packet;
 		}
-		$self->add_artnet_to_queue(queue => REDIS_QUEUE_1_NAME, artnet => freeze($frame), fps => $p{fps});
+		# Flatten the array of packets into a single raw binary string
+		$self->add_artnet_to_queue(queue => REDIS_QUEUE_1_NAME, artnet => join('', @frame_packets), fps => $p{fps});
 	}
 	else {
 		# not mirrored on first port
-		$frame = [];
+		@frame_packets = ();
 		for (1..$self->{num_universes}) {
 			$packet = "Art-Net\x00\x00\x50\x00\x0e\x00\x00" . chr($_ - 1) . "\x00" . chr(2) . chr(0) . $self->{dmx_channels}[$_ - 1];
-			push @$frame, $packet;
+			push @frame_packets, $packet;
 		}
-		$self->add_artnet_to_queue(queue => REDIS_QUEUE_1_NAME, artnet => freeze($frame), fps => $p{fps});	
+		# Flatten the array of packets into a single raw binary string
+		$self->add_artnet_to_queue(queue => REDIS_QUEUE_1_NAME, artnet => join('', @frame_packets), fps => $p{fps});	
 	}
 
 	# send mirrored data to other port
 	if ($self->{is_mirrored_on_second_port}) {
-		$frame = [];
+		@frame_packets = ();
 		for (1..$self->{num_universes}) {
 			$packet = "Art-Net\x00\x00\x50\x00\x0e\x00\x00" . chr($_ - 1 + $self->{universes_per_port}) . "\x00" . chr(2) . chr(0) . $self->{dmx_channels_mirrored}[$_ - 1];
-			push @$frame, $packet;
+			push @frame_packets, $packet;
 		}
-		$self->add_artnet_to_queue(queue => REDIS_QUEUE_2_NAME, artnet => freeze($frame), fps => $p{fps});
+		# Flatten the array of packets into a single raw binary string
+		$self->add_artnet_to_queue(queue => REDIS_QUEUE_2_NAME, artnet => join('', @frame_packets), fps => $p{fps});
 	}
 	else {
 		# not mirrored on second port
-		$frame = [];
+		@frame_packets = ();
 		for (1..$self->{num_universes}) {
 			$packet = "Art-Net\x00\x00\x50\x00\x0e\x00\x00" . chr($_ - 1 + $self->{universes_per_port}) . "\x00" . chr(2) . chr(0) . $self->{dmx_channels}[$_ - 1];
-			push @$frame, $packet;
+			push @frame_packets, $packet;
 		}
-		$self->add_artnet_to_queue(queue => REDIS_QUEUE_2_NAME, artnet => freeze($frame), fps => $p{fps});
+		# Flatten the array of packets into a single raw binary string
+		$self->add_artnet_to_queue(queue => REDIS_QUEUE_2_NAME, artnet => join('', @frame_packets), fps => $p{fps});
 	}
-	
-#	my $num_channels_per_pixel = $self->{num_channels_per_pixel};
-#	my $num_channels_not_used = $self->{num_channels_not_used};
 	
 	# wait for buffer to be emptied
 	while ($self->{redis}->keys(REDIS_QUEUE_1_NAME . ':*') > (BUFFER_TIME * $p{fps})) {

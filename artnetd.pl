@@ -4,7 +4,6 @@ use strict;
 use Config::Simple;
 use Time::HiRes qw(usleep gettimeofday tv_interval);
 use Redis;
-use Storable qw(thaw);
 use IO::Socket::INET;
 
 use constant REDIS_HOST => 'redis';
@@ -12,6 +11,10 @@ use constant REDIS_PORT => '6379';
 use constant REDIS_QUEUE_1_NAME => 'artnet_1:queue';
 use constant REDIS_QUEUE_2_NAME => 'artnet_2:queue';
 use constant ARTNET_CONF => 'artnet.conf';
+
+# Every individual Art-Net DMX universe packet generated is exactly 530 bytes 
+# (18 byte protocol header + 512 byte channel payload)
+use constant PACKET_SIZE => 530; 
 
 my $config = new Config::Simple(ARTNET_CONF);
 
@@ -61,9 +64,10 @@ while (1) {
 			if ($job_id) {
 				my %data = $redis->hgetall($job_id);
 				if ($data{message}) {
-					my $frame = thaw($data{message});
-					foreach (@$frame) {
-						$socket->send($_); # Immediate UDP broadcast
+					# Split the concatenated payload into 530-byte chunks 
+					# directly out of memory and stream them over UDP.
+					while ($data{message} =~ /(.{1,530})/sg) {
+						$socket->send($1); # Immediate UDP broadcast
 					}
 				}
 				$redis->del($job_id);
