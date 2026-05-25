@@ -20,7 +20,7 @@ services:
       - "80:80"
     volumes:
       - led_data:/led_controller/data
-      - led_data:/var/www/led_controller/images
+      - led_images:/var/www/led_controller/images
     depends_on:
       - redis
     environment:
@@ -47,7 +47,7 @@ services:
     container_name: movie-to-artnet-data-worker
     volumes:
       - led_data:/led_controller/data
-      - led_data:/var/www/led_controller/images
+      - led_images:/var/www/led_controller/images
     depends_on:
       - redis
     environment:
@@ -103,3 +103,4 @@ services:
 
 volumes:
   led_data:
+  led_images:

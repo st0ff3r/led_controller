@@ -26,6 +26,10 @@ RUN a2enmod headers
 RUN chown -R www-data:www-data /led_controller/data && \
 	chown -R www-data:www-data /var/www/led_controller/images
 
+RUN mkdir -p /led_controller/data/tmp && \
+	chown -R www-data:www-data /led_controller/data && \
+	chown -R www-data:www-data /var/www/led_controller/images
+
 # Redirect apache logs to stdout/stderr
 RUN ln -sf /proc/self/fd/1 /var/log/apache2/access.log && \
 	ln -sf /proc/self/fd/2 /var/log/apache2/error.log
