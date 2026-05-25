@@ -99,6 +99,7 @@ services:
     # Kept at 7.4 to avoid instruction-set issues on Raspberry Pi
     image: redis:7.4-alpine
     container_name: redis
+    command: redis-server --save "" --appendonly no
     restart: unless-stopped
 
 volumes:
