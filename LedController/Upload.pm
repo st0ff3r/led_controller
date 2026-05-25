@@ -30,8 +30,8 @@ sub handler {
 	my $fh_in = $q->upload('movie_file');
 	
 	if ($fh_in) {
-		# Limit file size to 1GB
-		my $max_size = 1024 * 1024 * 1024;
+		# Limit file size to 500MB (524,288,000 bytes)
+		my $max_size = 500 * 1024 * 1024;
 		my $file_size = $q->uploadInfo($fh_in)->{'Content-length'};
 		
 		if ($file_size > $max_size) {
