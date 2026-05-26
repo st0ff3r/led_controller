@@ -4,6 +4,8 @@ use Redis;
 use LedController;
 use POSIX qw(SIGTERM SIGINT);
 
+use LedController;
+
 my $should_exit = 0;
 
 # Define the Signal Handler
