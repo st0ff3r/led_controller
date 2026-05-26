@@ -2,7 +2,7 @@
 
 use strict;
 use Config::Simple;
-use Time::HiRes qw(usleep gettimeofday tv_interval);
+use Time::HiRes qw(ualarm gettimeofday tv_interval);
 use Redis;
 use IO::Socket::INET;
 
@@ -28,14 +28,15 @@ my $timeout = 86400;
 
 # Set up defaults
 my $fps = $redis->get('fps') || 60; 
-my $target_interval = 1.0 / $fps; # Target frame time in seconds (e.g., 0.016666 for 60fps)
+
+# Interrupt interval tracking state (converted to microseconds for ualarm)
+my $target_interval_usec = int(1_000_000 / $fps);
 
 my $should_exit = 0;
 $SIG{TERM} = sub { print "$0 received SIGTERM\n"; $should_exit = 1 };
 $SIG{KILL} = sub { print "$0 received SIGKILL\n"; $should_exit = 1 };
 my $exit_countdown = $fps * ($config->param('cross_fade_time') || 2);
 
-# flush after every write
 $| = 1;
 
 my $socket = IO::Socket::INET->new(
@@ -43,57 +44,70 @@ my $socket = IO::Socket::INET->new(
 	Proto    => 'udp'
 ) || die "ERROR in socket creation : $!\n";
 
-# Timekeeping variables
-my $last_frame_time = [gettimeofday];
 my $last_fps_check = time();
 
-while (1) {
-	my $now = [gettimeofday];
-	
-	# 1. EXACT TIMING CHECK: Has enough time passed to process the next frame?
-	my $elapsed = tv_interval($last_frame_time, $now);
-	
-	if ($elapsed >= $target_interval) {
-		# Update frame time anchor point
-		$last_frame_time = $now;
+# 1. THE INTERRUPT FLAG
+my $frame_tick = 0;
 
-		# 2. NON-BLOCKING FETCH: Grab the latest jobs instantly
-		# We look at queue 1, then queue 2 immediately
+# 2. THE TIMER INTERRUPT REGISTER
+# When the OS fires a SIGALRM signal, pause everything and increment our flag instantly
+$SIG{ALRM} = sub {
+	$frame_tick++;
+};
+
+# 3. ARM THE TICK GENERATOR
+# ualarm(initial_delay_usec, repeating_interval_usec)
+ualarm($target_interval_usec, $target_interval_usec);
+
+print "Art-Net Daemon initialized via OS Timer Interrupts ($fps FPS / Interval: $target_interval_usec usec)\n";
+
+while (1) {
+	# 4. SLEEP UNTIL NEXT INTERRUPT WAKES US UP
+	# sleep() or select() blocks the process from consuming CPU cycles.
+	# Any native OS signal (like our SIGALRM) immediately breaks this sleep block.
+	select(undef, undef, undef, 1.0);
+
+	# 5. PROCESS TICKS ACCUMULATED
+	while ($frame_tick > 0) {
+		$frame_tick--; # Consume the tick
+
+		# Fetch jobs from the queues
 		foreach my $queue (REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME) {
-			my $job_id = $redis->lpop($queue); # Non-blocking LPOP
+			my $job_id = $redis->lpop($queue);
 			if ($job_id) {
 				my %data = $redis->hgetall($job_id);
 				if ($data{message}) {
-					# Split the concatenated payload into 530-byte chunks 
-					# directly out of memory and stream them over UDP.
 					while ($data{message} =~ /(.{1,530})/sg) {
-						$socket->send($1); # Immediate UDP broadcast
+						$socket->send($1);
 					}
 				}
 				$redis->del($job_id);
 			}
 		}
 
-		# 3. ONCE-PER-SECOND TASKS (Housekeeping)
+		# Once-per-second tasks
 		if (time() - $last_fps_check >= 1) {
 			my $new_fps = $redis->get('fps') || 60;
 			if ($new_fps != $fps) {
 				$fps = $new_fps;
-				$target_interval = 1.0 / $fps;
-				print "Framerate updated smoothly to: $fps FPS\n";
+				$target_interval_usec = int(1_000_000 / $fps);
+				
+				# PRECISE RE-ARM: Stop timer first to avoid race conditions on execution context
+				ualarm(0, 0);
+				ualarm($target_interval_usec, $target_interval_usec);
+				print "Framerate updated smoothly via interrupt register to: $fps FPS\n";
+				
+				# Force loop to immediately evaluate new timing cadence
+				last;
 			}
 			$last_fps_check = time();
 		}
 
 		# Handle clean exit sequence
 		if ($should_exit && $exit_countdown-- <= 0) {
+			ualarm(0, 0); # Disarm timer completely
 			warn "$0 exiting cleanly\n";
 			exit 0;
 		}
-	} else {
-		# 4. CPU PROTECTOR: We are too early for the next frame.
-		# Sleep for a tiny fraction of a millisecond (100-200 microseconds).
-		# This gives the CPU core a breather without causing us to miss our frame window.
-		usleep(200); 
 	}
 }
