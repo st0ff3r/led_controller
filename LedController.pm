@@ -108,6 +108,13 @@ sub movie_to_artnet {
 	}
 	close($pipe);
 
+	# Check execution exit status flag of the pipeline close
+	if ($? != 0) {
+		warn "[LedController] FFmpeg pipeline encountered execution errors ($?)\n";
+		close($fh_out);
+		return 0;
+	}
+
 	# 5. Append the frames in reverse order if loop_forth_and_back is requested
 	if ($loop_forth_and_back && scalar(@buffered_hex_frames) >= 3) {
 		warn "[LedController] Appending reverse loop frames...\n";

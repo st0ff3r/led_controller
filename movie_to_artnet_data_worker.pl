@@ -47,16 +47,16 @@ while (! $should_exit) {
 		} else {
 			# This triggers if movie_to_artnet returns false
 			warn "[Worker] Conversion process failed.\n";
-			$redis->set('progress', '0.0');
-			$redis->publish('progress_channel', '0.0');
+			$redis->set('progress', 'ERROR');
+			$redis->publish('progress_channel', 'ERROR');
 		}
 	};
 
 	if ($@) {
 		# This triggers if the code dies due to an unhandled exception
 		warn "[Worker] Job crashed: $@";
-		$redis->set('progress', '0.0');
-		$redis->publish('progress_channel', '0.0');
+		$redis->set('progress', 'ERROR');
+		$redis->publish('progress_channel', 'ERROR');
 	}
 
 	unlink($job_file) if -e $job_file;
