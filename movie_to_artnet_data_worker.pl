@@ -24,9 +24,11 @@ while (! $should_exit) {
 	my ($queue, $job_file) = @$result;
 	
 	$redis->set('system_locked', '1');
-	# SET TO 50: Upload/Processing started
+	
+	# Clear out any old error text explicitly before firing the 50% start flag
 	$redis->set('progress', '50.0'); 
 	$redis->publish('progress_channel', '50.0');
+	
 	# Wrap job in eval to catch crashes
 	eval {
 		warn "[Worker] Starting conversion process...\n";

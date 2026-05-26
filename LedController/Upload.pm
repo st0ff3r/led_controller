@@ -51,8 +51,9 @@ sub handler {
 			# Set standard permissions so worker group access remains uninhibited
 			chmod(0666, $filename);
 			
-			# Reset tracking indices inside the shared state machine database
-			$redis->set('progress', '50.0');
+			# FORCE CLEAN SLATE: Erase any historical error states before queueing
+			$redis->set('progress', '0.0');
+			$redis->publish('progress_channel', '0.0');
 			
 			# Push the absolute shared volume path down to the worker thread loop
 			$redis->rpush('job_queue', $filename);

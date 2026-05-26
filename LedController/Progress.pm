@@ -16,9 +16,9 @@ sub handler {
 
 	my $val = $redis->get('progress') || '0.0';
 	
-	# If a user reloads the page and the value is -1.0, override it to 0.0 
-	# so the progress bar stays hidden on fresh page loads
-	if ($val eq '-1.0') { $val = '0.0'; }
+	# If a user reloads the page or re-subscribes and the value is -1.0 or ERROR,
+	# override it to 0.0 so stale states never leak into brand new requests.
+	if ($val eq '-1.0' || $val eq 'ERROR') { $val = '0.0'; }
 
 	$r->print("data: $val\n\n");
 	$r->rflush();

@@ -128,6 +128,9 @@ _('drag_drop').ondrop = function(event) {
 };
 
 function handleFileUpload(file) {
+	// FORCE IMMEDIATE RESET OF ERROR LOCKS ON NEW ATTEMPT
+	errorDisplayUntil = 0;
+
 	// 1. Client-side Size Check
 	if (file.size > 500 * 1024 * 1024) {
 		showUploadError('<div class="alert alert-danger w-100 m-0 h-100 d-flex align-items-center justify-content-center" style="font-weight: bold;">File is too large (max 500MB)</div>');
