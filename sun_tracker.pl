@@ -15,7 +15,9 @@ use feature 'state'; # Enabled to allow persistent local variables
 use constant ARTNET_CONF => 'artnet.conf';
 
 my $config = new Config::Simple(ARTNET_CONF);
-my $redis = Redis->new(server => 'redis:6379');
+
+my $redis_socket = $ENV{REDIS_SOCKET} || die "REDIS_SOCKET environment variable not set";
+my $redis = Redis->new(sock => $redis_socket) or die "Failed to connect to Redis socket: $!";
 
 my $loop = IO::Async::Loop->new;
 

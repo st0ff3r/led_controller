@@ -13,10 +13,13 @@ use constant ARTNET_CONF => '/led_controller/artnet.conf';
 $| = 1; # Force autoflush
 
 my $config = new Config::Simple(ARTNET_CONF);
+my $redis_socket = $ENV{REDIS_SOCKET} || die "REDIS_SOCKET environment variable not set";
+
 # Connection 1: For all standard DB commands (GET/SET)
-my $redis = Redis->new(server => 'redis:6379');
+my $redis = Redis->new(sock => $redis_socket) or die "Failed to connect to Redis socket: $!";
+
 # Connection 2: ONLY for subscription listening
-my $subscriber = Redis->new(server => 'redis:6379');
+my $subscriber = Redis->new(sock => $redis_socket) or die "Failed to connect to Redis socket: $!";
 
 # Define intensity variables
 my $intensity = $redis->get('intensity') || 0.0;

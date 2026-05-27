@@ -6,8 +6,6 @@ use Time::HiRes qw(ualarm gettimeofday tv_interval);
 use Redis;
 use IO::Socket::INET;
 
-use constant REDIS_HOST => 'redis';
-use constant REDIS_PORT => '6379';
 use constant REDIS_QUEUE_1_NAME => 'artnet_1:queue';
 use constant REDIS_QUEUE_2_NAME => 'artnet_2:queue';
 use constant ARTNET_CONF => 'artnet.conf';
@@ -18,11 +16,8 @@ use constant PACKET_SIZE => 530;
 
 my $config = new Config::Simple(ARTNET_CONF);
 
-my $redis_host = REDIS_HOST;
-my $redis_port = REDIS_PORT;
-my $redis = Redis->new(
-	server => "$redis_host:$redis_port",
-) || warn $!;
+my $redis_socket = $ENV{REDIS_SOCKET} || die "REDIS_SOCKET environment variable not set";
+my $redis = Redis->new(sock => $redis_socket) or die "Failed to connect to Redis socket: $!";
 
 my $timeout = 86400;
 
