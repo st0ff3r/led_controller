@@ -28,6 +28,41 @@ my $redis = Redis->new(
 	server => "$redis_host:$redis_port",
 ) || warn $!;
 
+# --- LUA SCRIPT ENGINE REGISTER ---
+# This script pops a job from either queue, extracts its raw payload, drops stale history,
+# deletes the hash to prevent leaks, and returns the binary stream natively in 1 round-trip.
+my $lua_pop_and_flush = qq{
+    local job_id = redis.call('LPOP', KEYS[1])
+    if not job_id then
+        job_id = redis.call('LPOP', KEYS[2])
+    end
+    
+    if job_id then
+        -- FRAME SKIPPER: If the queue backed up, rapidly shift forward to the newest state
+        local next_job_id = redis.call('LPOP', KEYS[1])
+        if not next_job_id then
+            next_job_id = redis.call('LPOP', KEYS[2])
+        end
+        while next_job_id do
+            redis.call('DEL', job_id)
+            job_id = next_job_id
+            next_job_id = redis.call('LPOP', KEYS[1])
+            if not next_job_id then
+                next_job_id = redis.call('LPOP', KEYS[2])
+            end
+        end
+
+        -- Fetch only the raw binary message payload string
+        local data = redis.call('HGET', job_id, 'message')
+        redis.call('DEL', job_id)
+        return data
+    end
+    return nil
+};
+
+my $lua_sha = $redis->script_load($lua_pop_and_flush);
+# ----------------------------------
+
 my $timeout = 86400;
 
 # Set up defaults with defensive compliance limits
@@ -90,29 +125,14 @@ while (1) {
 
 		$frame_tick = 0; # Consume the ticks instantly
 
-		# Fetch jobs from the queues
-		foreach my $queue (REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME) {
-			my $job_id = $redis->lpop($queue);
-			if ($job_id) {
-				
-				# FRAME SKIPPER: If multiple jobs backed up in Redis, loop LPOP 
-				# until we hit the newest frame, dropping the stale intermediate ones.
-				my $next_job_id;
-				while ($next_job_id = $redis->lpop($queue)) {
-					$redis->del($job_id); # remove data for skipped job
-					$job_id = $next_job_id;
-				}
-
-				my %data = $redis->hgetall($job_id);
-				if ($data{message}) {
-					# Split the concatenated payload into 530-byte chunks 
-					# directly out of memory and stream them over UDP.
-					while ($data{message} =~ /(.{1,530})/sg) {
-						$socket->send($1);
-					}
-				}
-				# remove data for job
-				$redis->del($job_id);
+		# Execute atomic Lua extraction (Handing both queue names as Redis KEYS)
+		my $binary_frame = $redis->evalsha($lua_sha, 2, REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME);
+		
+		if ($binary_frame) {
+			# Split the concatenated payload into 530-byte chunks 
+			# directly out of memory and stream them over UDP.
+			while ($binary_frame =~ /(.{1,530})/sg) {
+				$socket->send($1);
 			}
 		}
 

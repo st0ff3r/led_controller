@@ -100,7 +100,6 @@ sub set_pixel {
 	my $channel_mirrored = (($self->{num_pixels} - $pixel) * $self->{num_channels_per_pixel}) % 512;
 	my $universe_mirrored = int(($self->{num_pixels} - $pixel) * $self->{num_channels_per_pixel} / 512);
 
-#	print('pixel: ' . $pixel . ' => ' . 'universe: ' . $universe . ', channel: ' . $channel . "\n");
 	if ($self->{pixel_format} eq 'GRB') {
 		vec($self->{dmx_channels}[$universe], $channel + 0, 8) = $green;
 		vec($self->{dmx_channels}[$universe], $channel + 1, 8) = $red;
@@ -172,8 +171,8 @@ sub send_artnet {
 		$self->add_artnet_to_queue(queue => REDIS_QUEUE_2_NAME, artnet => join('', @frame_packets), fps => $p{fps});
 	}
 	
-	# wait for buffer to be emptied
-	while ($self->{redis}->keys(REDIS_QUEUE_1_NAME . ':*') > (BUFFER_TIME * $p{fps})) {
+	# wait for buffer to be emptied using lightweight LLEN against your constant layout
+	while ($self->{redis}->llen(REDIS_QUEUE_1_NAME . ':queue') > (BUFFER_TIME * $p{fps})) {
 		usleep 1000_000 * BUFFER_TIME / 2;
 	}
 }
@@ -187,6 +186,9 @@ sub add_artnet_to_queue {
 	my $self = shift;
 	my %p = @_;
 
+	# Automatically expands your constant ('artnet_1') to match the receiver key ('artnet_1:queue')
+	my $queue_base = $p{queue} . ':queue';
+
 	# Create the next id
 	my $id = $self->{redis}->incr(join(':', $p{queue}, 'id'));
 	my $job_id = join(':', $p{queue}, $id);
@@ -197,7 +199,7 @@ sub add_artnet_to_queue {
 	$self->{redis}->hmset($job_id, %data);
 
 	# Then add the job to the queue
-	$self->{redis}->rpush(join(':', $p{queue}, 'queue'), $job_id);
+	$self->{redis}->rpush($queue_base, $job_id);
 	
 	# Only update if the value has changed
 	my $current_fps = $self->{redis}->get('fps');
@@ -207,5 +209,3 @@ sub add_artnet_to_queue {
 }
 
 1;
-
-__END__
