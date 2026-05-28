@@ -21,10 +21,11 @@ services:
     volumes:
       - led_data:/led_controller/data
       - led_images:/var/www/led_controller/images
+      - redis_socket:/run/redis
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
+      - REDIS_SOCK=/run/redis/redis.sock
     restart: unless-stopped
 
   # 2. Sun Tracker Worker
@@ -33,10 +34,12 @@ services:
       context: .
       dockerfile: Dockerfile.sun_tracker
     container_name: sun-tracker
+    volumes:
+      - redis_socket:/run/redis
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
+      - REDIS_SOCK=/run/redis/redis.sock
     restart: unless-stopped
 
   # 3. Movie Processing Worker
@@ -48,10 +51,11 @@ services:
     volumes:
       - led_data:/led_controller/data
       - led_images:/var/www/led_controller/images
+      - redis_socket:/run/redis
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
+      - REDIS_SOCK=/run/redis/redis.sock
     restart: unless-stopped
 
   # 4. Artnet Live Sender Service
@@ -62,10 +66,11 @@ services:
     container_name: send_artnet_data
     volumes:
       - led_data:/led_controller/data
+      - redis_socket:/run/redis
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
+      - REDIS_SOCK=/run/redis/redis.sock
     restart: unless-stopped
 
   # 5. Artnet Daemon Context (Exposes UDP Port 6454)
@@ -76,10 +81,12 @@ services:
     container_name: artnetd
     ports:
       - "6454:6454/udp"
+    volumes:
+      - redis_socket:/run/redis
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
+      - REDIS_SOCK=/run/redis/redis.sock
     restart: unless-stopped
 
   # 6. Artnet Listener (Exposes UDP Port 6454 if needed alternately)
@@ -88,20 +95,24 @@ services:
       context: .
       dockerfile: Dockerfile.artnet_listener
     container_name: artnet-listener
+    volumes:
+      - redis_socket:/run/redis
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
+      - REDIS_SOCK=/run/redis/redis.sock
     restart: unless-stopped
 
   # Redis Datastore Container
   redis:
-    # Kept at 7.4 to avoid instruction-set issues on Raspberry Pi
     image: redis:7.4-alpine
     container_name: redis
-    command: redis-server --save "" --appendonly no
+    command: redis-server --port 0 --unixsocket /run/redis/redis.sock --unixsocketperm 777 --save "" --appendonly no
+    volumes:
+      - redis_socket:/run/redis
     restart: unless-stopped
 
 volumes:
   led_data:
   led_images:
+  redis_socket:

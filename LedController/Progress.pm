@@ -7,8 +7,16 @@ use Redis;
 
 sub handler {
 	my $r = shift;
-	my $redis = Redis->new(server => 'redis:6379');
-	my $subscriber = Redis->new(server => 'redis:6379');
+
+	my $redis_sock = $ENV{REDIS_SOCK} || die "FATAL: REDIS_SOCK environment variable is not defined!\n";
+
+	$self->{redis} = Redis->new(
+		sock => $redis_sock,
+	) || die "FATAL: [$0] Could not connect to Redis socket: $!\n";
+
+	my $subscriber = Redis->new(
+		sock => $redis_sock,
+	) || die "FATAL: [$0] Could not connect to Redis socket: $!\n";
 	
 	$r->content_type('text/event-stream');
 	$r->headers_out->set('Cache-Control' => 'no-cache');

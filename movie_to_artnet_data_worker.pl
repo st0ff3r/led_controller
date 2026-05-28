@@ -12,7 +12,11 @@ my $should_exit = 0;
 $SIG{TERM} = sub { $should_exit = 1; warn "[Worker] SIGTERM received. Shutting down gracefully...\n"; };
 $SIG{INT}  = sub { $should_exit = 1; warn "[Worker] SIGINT received. Shutting down gracefully...\n"; };
 
-my $redis = Redis->new(server => 'redis:6379');
+my $redis_sock = $ENV{REDIS_SOCK} || die "FATAL: REDIS_SOCK environment variable is not defined!\n";
+my $redis = Redis->new(
+	sock => $redis_sock,
+) || die "FATAL: [$0] Could not connect to Redis socket: $!\n";
+
 my $c = LedController->new();
 
 # Loop while we should NOT exit

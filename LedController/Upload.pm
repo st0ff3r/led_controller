@@ -11,7 +11,12 @@ use constant TARGET_TMP_DIR => '/led_controller/data/tmp';
 
 sub handler {
 	my $r = shift;
-	my $redis = Redis->new(server => 'redis:6379');
+
+	my $redis_sock = $ENV{REDIS_SOCK} || die "FATAL: REDIS_SOCK environment variable is not defined!\n";
+
+	my $redis = Redis->new(
+		sock => $redis_sock,
+	) || die "FATAL: [artnetd] Could not connect to Redis socket: $!\n";
 
 	# 1. Handle HEAD requests: Always return OK so the pre-flight check passes
 	if ($r->method eq 'HEAD') {

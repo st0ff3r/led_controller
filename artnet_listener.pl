@@ -13,7 +13,11 @@ use constant ARTNET_CONF => 'artnet.conf';
 $| = 1; # Force autoflush
 
 my $config = new Config::Simple(ARTNET_CONF);
-my $redis = Redis->new(server => 'redis:6379');
+
+my $redis_sock = $ENV{REDIS_SOCK} || die "FATAL: REDIS_SOCK environment variable is not defined!\n";
+my $redis = Redis->new(
+	sock => $redis_sock,
+) || die "FATAL: [$0] Could not connect to Redis socket: $!\n";
 
 my $artnet_listener_timeout = $config->param('artnet_listener_timeout') || 10;
 

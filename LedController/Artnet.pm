@@ -7,8 +7,6 @@ use Redis;
 use Data::Dumper;
 use Data::HexDump;
 
-use constant REDIS_HOST => 'redis';
-use constant REDIS_PORT => '6379';
 use constant REDIS_QUEUE_1_NAME => 'artnet_1';
 use constant REDIS_QUEUE_2_NAME => 'artnet_2';
 
@@ -45,11 +43,10 @@ sub new {
 	$self->{is_mirrored_on_first_port} = $p{is_mirrored_on_first_port};
 	$self->{is_mirrored_on_second_port} = $p{is_mirrored_on_second_port};
 
-	my $redis_host = REDIS_HOST;
-	my $redis_port = REDIS_PORT;
+	my $redis_sock = $ENV{REDIS_SOCK} || die "FATAL: REDIS_SOCK environment variable is not defined!\n";
 	$self->{redis} = Redis->new(
-		server => "$redis_host:$redis_port",
-	) || warn $!;
+		sock => $redis_sock,
+	) || die "FATAL: [$0] Could not connect to Redis socket: $!\n";
 
 	# init all channels to 0
 	$self->{num_universes} = ceil($self->{num_pixels} * $self->{num_channels_per_pixel} / 512);

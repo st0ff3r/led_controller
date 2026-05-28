@@ -7,8 +7,6 @@ use Redis;
 use File::Copy;
 
 use constant ARTNET_CONF => '/led_controller/artnet.conf';
-use constant REDIS_HOST => 'redis';
-use constant REDIS_PORT => '6379';
 
 $| = 1; # Force autoflush
 
@@ -18,7 +16,11 @@ sub new {
 	my $class = shift;
 	my %p = @_;
 	my $self = {};
-	$self->{redis} = Redis->new(server => REDIS_HOST . ':' . REDIS_PORT) || warn $!;
+	my $redis_sock = $ENV{REDIS_SOCK} || die "FATAL: REDIS_SOCK environment variable is not defined!\n";
+	$self->{redis} = Redis->new(
+		sock => $redis_sock,
+	) || die "FATAL: [$0] Could not connect to Redis socket: $!\n";
+
 	bless $self, $class;
 	return($self);
 }
