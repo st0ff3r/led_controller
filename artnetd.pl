@@ -28,36 +28,40 @@ my $redis = Redis->new(
 	server => "$redis_host:$redis_port",
 ) || warn $!;
 
-# --- LUA SCRIPT ENGINE REGISTER ---
-# This script pops a job from either queue, extracts its raw payload, drops stale history,
-# deletes the hash to prevent leaks, and returns the binary stream natively in 1 round-trip.
+# --- LUA SCRIPT ENGINE REGISTER (CORRECTED) ---
+# Separately pops from each queue to prevent the mirror channel from being eaten by the frame skipper.
 my $lua_pop_and_flush = qq{
-    local job_id = redis.call('LPOP', KEYS[1])
-    if not job_id then
-        job_id = redis.call('LPOP', KEYS[2])
-    end
-    
-    if job_id then
-        -- FRAME SKIPPER: If the queue backed up, rapidly shift forward to the newest state
-        local next_job_id = redis.call('LPOP', KEYS[1])
-        if not next_job_id then
-            next_job_id = redis.call('LPOP', KEYS[2])
-        end
-        while next_job_id do
-            redis.call('DEL', job_id)
-            job_id = next_job_id
-            next_job_id = redis.call('LPOP', KEYS[1])
-            if not next_job_id then
-                next_job_id = redis.call('LPOP', KEYS[2])
-            end
-        end
+    local data1 = nil
+    local data2 = nil
 
-        -- Fetch only the raw binary message payload string
-        local data = redis.call('HGET', job_id, 'message')
-        redis.call('DEL', job_id)
-        return data
+    -- Process Queue 1
+    local job_id1 = redis.call('LPOP', KEYS[1])
+    if job_id1 then
+        local next_id = redis.call('LPOP', KEYS[1])
+        while next_id do
+            redis.call('DEL', job_id1)
+            job_id1 = next_id
+            next_id = redis.call('LPOP', KEYS[1])
+        end
+        data1 = redis.call('HGET', job_id1, 'message')
+        redis.call('DEL', job_id1)
     end
-    return nil
+
+    -- Process Queue 2
+    local job_id2 = redis.call('LPOP', KEYS[2])
+    if job_id2 then
+        local next_id = redis.call('LPOP', KEYS[2])
+        while next_id do
+            redis.call('DEL', job_id2)
+            job_id2 = next_id
+            next_id = redis.call('LPOP', KEYS[2])
+        end
+        data2 = redis.call('HGET', job_id2, 'message')
+        redis.call('DEL', job_id2)
+    end
+
+    -- Return both payloads separated by a delimiter if both exist
+    return {data1, data2}
 };
 
 my $lua_sha = $redis->script_load($lua_pop_and_flush);
