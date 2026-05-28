@@ -107,9 +107,9 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: redis
-    command: redis-server --port 0 --unixsocket /run/redis/redis.sock --unixsocketperm 777 --save "" --appendonly no
+    command: redis-server --port 0 --unixsocket /data/redis.sock --unixsocketperm 777 --save "" --appendonly no
     volumes:
-      - redis_socket:/run/redis
+      - redis_socket:/data
     restart: unless-stopped
 
 volumes:
