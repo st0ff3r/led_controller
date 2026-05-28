@@ -55,6 +55,7 @@ my $socket = IO::Socket::INET->new(
 ) || die "ERROR in socket creation : $!\n";
 
 my $last_fps_check = time();
+my $dropped_frame_counter = 0; # Non-blocking lag tracking register
 
 # 1. THE INTERRUPT FLAG
 my $frame_tick = 0;
@@ -82,10 +83,9 @@ while (1) {
 		
 		# DYNAMIC FRAME DROPPER:
 		# If $frame_tick is > 1, the hardware timer fired again before we finished 
-		# processing the previous interval. Drop the backlog to maintain video sync.
+		# processing the previous interval. Accumulate the lag in RAM instead of blocking on logs.
 		if ($frame_tick > 1) {
-			my $dropped_frames = $frame_tick - 1;
-			warn "[artnetd] Warning: CPU lag detected. Dropped $dropped_frames frame(s) to maintain sync.\n";
+			$dropped_frame_counter += ($frame_tick - 1);
 		}
 
 		$frame_tick = 0; # Consume the ticks instantly
@@ -118,6 +118,13 @@ while (1) {
 
 		# Once-per-second tasks
 		if (time() - $last_fps_check >= 1) {
+			
+			# Safe deferred logging block out of the time-critical loop context
+			if ($dropped_frame_counter > 0) {
+				warn "[artnetd] Warning: CPU lag detected. Dropped $dropped_frame_counter frame(s) in the last second to maintain sync.\n";
+				$dropped_frame_counter = 0;
+			}
+
 			my $raw_fps = $redis->get('fps') || 60;
 			
 			# Apply defensive compliance guards to incoming Redis value
