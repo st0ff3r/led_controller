@@ -143,7 +143,6 @@ while (1) {
 				# Clear any backlog buildup from the old timing profile 
 				# acting as a circuit breaker against signal queue overflow
 				$frame_tick = 0;
-				last;
 			}
 			$last_fps_check = time();
 		}
