@@ -6,8 +6,6 @@ use Time::HiRes qw(ualarm gettimeofday tv_interval);
 use Redis;
 use IO::Socket::INET;
 
-use constant REDIS_HOST => 'redis';
-use constant REDIS_PORT => '6379';
 use constant REDIS_QUEUE_1_NAME => 'artnet_1:queue';
 use constant REDIS_QUEUE_2_NAME => 'artnet_2:queue';
 use constant ARTNET_CONF => 'artnet.conf';
@@ -22,11 +20,21 @@ use constant MAX_SANITY_FPS => 120;
 
 my $config = new Config::Simple(ARTNET_CONF);
 
-my $redis_host = REDIS_HOST;
-my $redis_port = REDIS_PORT;
-my $redis = Redis->new(
-	server => "$redis_host:$redis_port",
-) || warn $!;
+my $redis_socket = $ENV{REDIS_SOCKET} || die "REDIS_SOCKET environment variable not set";
+my $redis = Redis->new(sock => $redis_socket) or die "Failed to connect to Redis socket: $!";
+
+# LUA Script for atomic Pop-Get-Delete
+my $lua_script = q{
+	local job_id = redis.call('LPOP', KEYS[1])
+	if job_id then
+		local val = redis.call('GET', job_id)
+		redis.call('DEL', job_id)
+		return val
+	end
+	return nil
+};
+
+my $script_sha = $redis->script('LOAD', $lua_script);
 
 my $timeout = 86400;
 
@@ -51,7 +59,7 @@ $| = 1;
 # network connection
 my $socket = IO::Socket::INET->new(
 	PeerAddr => $config->param('peer_addr') . ":6454",
-	Proto    => 'udp'
+	Proto 	 => 'udp'
 ) || die "ERROR in socket creation : $!\n";
 
 my $last_fps_check = time();
@@ -92,27 +100,29 @@ while (1) {
 
 		# Fetch jobs from the queues
 		foreach my $queue (REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME) {
-			my $job_id = $redis->lpop($queue);
-			if ($job_id) {
-				
-				# FRAME SKIPPER: If multiple jobs backed up in Redis, loop LPOP 
-				# until we hit the newest frame, dropping the stale intermediate ones.
-				my $next_job_id;
-				while ($next_job_id = $redis->lpop($queue)) {
-					$redis->del($job_id); # remove data for skipped job
-					$job_id = $next_job_id;
-				}
+			
+			# Execute LUA script via SHA1. If the call fails, we die to trigger Docker restart.
+			my $data = $redis->evalsha($script_sha, 1, $queue);
 
-				my %data = $redis->hgetall($job_id);
-				if ($data{message}) {
-					# Split the concatenated payload into 530-byte chunks 
-					# directly out of memory and stream them over UDP.
-					while ($data{message} =~ /(.{1,530})/sg) {
-						$socket->send($1);
-					}
+			# Handle missing script or connection loss
+			if (!defined $data) {
+				if ($redis->last_error && $redis->last_error =~ /NOSCRIPT/) {
+					$script_sha = $redis->script('LOAD', $lua_script);
+					$data = $redis->evalsha($script_sha, 1, $queue);
+					
+					die "[artnetd] Critical: Failed to execute LUA script after reload: " . ($redis->last_error // 'unknown') 
+						unless defined $data;
+				} else {
+					die "[artnetd] Critical: Redis communication failure: " . ($redis->last_error // 'unknown');
 				}
-				# remove data for job
-				$redis->del($job_id);
+			}
+
+			if ($data) {
+				# Split the concatenated payload into 530-byte chunks 
+				# directly out of memory and stream them over UDP.
+				while ($data =~ /(.{1,530})/sg) {
+					$socket->send($1);
+				}
 			}
 		}
 
