@@ -6,6 +6,8 @@ use Time::HiRes qw(ualarm gettimeofday tv_interval);
 use Redis;
 use IO::Socket::INET;
 
+use constant REDIS_HOST => 'redis';
+use constant REDIS_PORT => '6379';
 use constant REDIS_QUEUE_1_NAME => 'artnet_1:queue';
 use constant REDIS_QUEUE_2_NAME => 'artnet_2:queue';
 use constant ARTNET_CONF => 'artnet.conf';
@@ -20,8 +22,8 @@ use constant MAX_SANITY_FPS => 120;
 
 my $config = new Config::Simple(ARTNET_CONF);
 
-my $redis_socket = $ENV{REDIS_SOCKET} || die "REDIS_SOCKET environment variable not set";
-my $redis = Redis->new(sock => $redis_socket) or die "Failed to connect to Redis socket: $!";
+# Reverting to original TCP/IP connection
+my $redis = Redis->new(server => REDIS_HOST . ':' . REDIS_PORT) or die "Failed to connect to Redis: $!";
 
 # LUA Script for atomic Pop-Get-Delete
 my $lua_script = q{
