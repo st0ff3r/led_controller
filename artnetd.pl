@@ -28,11 +28,11 @@ my $redis = Redis->new(
 	server => "$redis_host:$redis_port",
 ) || warn $!;
 
-# --- LUA SCRIPT ENGINE REGISTER (CORRECTED) ---
+# --- LUA SCRIPT ENGINE REGISTER (CORRECTED MULTI-BULK) ---
 # Separately pops from each queue to prevent the mirror channel from being eaten by the frame skipper.
 my $lua_pop_and_flush = qq{
-    local data1 = nil
-    local data2 = nil
+    local data1 = false
+    local data2 = false
 
     -- Process Queue 1
     local job_id1 = redis.call('LPOP', KEYS[1])
@@ -60,7 +60,7 @@ my $lua_pop_and_flush = qq{
         redis.call('DEL', job_id2)
     end
 
-    -- Return both payloads separated by a delimiter if both exist
+    -- Return both payloads inside a Lua array table
     return {data1, data2}
 };
 
@@ -130,13 +130,19 @@ while (1) {
 		$frame_tick = 0; # Consume the ticks instantly
 
 		# Execute atomic Lua extraction (Handing both queue names as Redis KEYS)
-		my $binary_frame = $redis->evalsha($lua_sha, 2, REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME);
+		# This safely extracts an array reference containing [ data1, data2 ]
+		my $binary_frames = $redis->evalsha($lua_sha, 2, REDIS_QUEUE_1_NAME, REDIS_QUEUE_2_NAME);
 		
-		if ($binary_frame) {
-			# Split the concatenated payload into 530-byte chunks 
-			# directly out of memory and stream them over UDP.
-			while ($binary_frame =~ /(.{1,530})/sg) {
-				$socket->send($1);
+		# Safely unpack and loop through the multi-bulk array entries returned by Lua
+		if ($binary_frames && ref($binary_frames) eq 'ARRAY') {
+			foreach my $frame (@$binary_frames) {
+				if ($frame) {
+					# Split the concatenated payload into 530-byte chunks 
+					# directly out of memory and stream them over UDP.
+					while ($frame =~ /(.{1,530})/sg) {
+						$socket->send($1);
+					}
+				}
 			}
 		}
 
